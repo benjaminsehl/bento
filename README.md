@@ -18,6 +18,23 @@ An [Omarchy](https://omarchy.org) bar widget that shows workspaces as page dots 
   Slide along the dots to flip through previews.
 - Works in horizontal and vertical bars.
 
+## Exposé
+
+Pinch five fingers together to see every window at once. Spread them, press `Esc` or click the background to put it away.
+
+- Pages run left to right in dot order. Each is a column with its windows spread out so none overlap.
+  The column you're on has a faint surface.
+- Minimized and scratchpad windows aren't pages, so they sit on a shelf below a hairline.
+- Click a window to go to it. A minimized window comes back onto the page you're on.
+- Click a column to go to that page. Click the empty frame at either end to start a new page there.
+- Arrow keys move the selection and `Enter` picks it. Window titles only show for the selection.
+
+The overlay is part of this plugin. `install.sh` sets up the gesture, which you can also trigger yourself:
+
+```bash
+omarchy-shell shell toggle io.github.benjaminsehl.pages '{}'
+```
+
 ## Install
 
 ```bash

@@ -173,6 +173,15 @@ hl.on("window.close", function(w)
   end, { timeout = 30, type = "oneshot" })
 end)
 
+-- ------------------------------------------------------------- exposé
+-- Pinch five fingers together to see every window; spread them to put it away.
+-- (Hyprland's names are the other way round: a pinch fires "pinchout".)
+local EXPOSE = "omarchy-shell shell toggle io.github.benjaminsehl.pages '{}'"
+hl.gesture({ fingers = 5, direction = "pinchout", action = function() hl.exec_cmd(EXPOSE) end })
+hl.gesture({ fingers = 5, direction = "pinchin", action = function()
+  hl.exec_cmd("omarchy-shell shell hide io.github.benjaminsehl.pages")
+end })
+
 -- New sessions start at workspace 1001, leaving room on the left.
 hl.on("hyprland.start", function()
   hl.dispatch(hl.dsp.focus({ workspace = tostring(BASE + 1) }))

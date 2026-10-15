@@ -5,12 +5,14 @@
   "version": "1.0.0",
   "author": "Benjamin Sehl",
   "license": "MIT",
-  "description": "Workspaces as page dots; empty pages disappear",
+  "description": "Workspaces as page dots, with an Expos\u00e9 of every window",
   "kinds": [
-    "bar-widget"
+    "bar-widget",
+    "overlay"
   ],
   "entryPoints": {
-    "barWidget": "BarWidget.qml"
+    "barWidget": "BarWidget.qml",
+    "overlay": "Expose.qml"
   },
   "barWidget": {
     "displayName": "Pages",
