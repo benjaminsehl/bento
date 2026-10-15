@@ -209,6 +209,9 @@ Item {
         leftMargin: Math.max(Style.gapsOut * 2, (width - contentWidth) / 2)
         rightMargin: Style.gapsOut * 2
 
+        // Scrolling is handled by stripScroll below.
+        interactive: false
+
         delegate: Item {
           id: card
           required property var modelData
@@ -297,6 +300,32 @@ Item {
 
             Behavior on y { enabled: !cardMouse.drag.active; NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
           }
+        }
+      }
+
+      // Two fingers, sideways or up and down, move the strip with the fingers.
+      // Omarchy scales touchpad scrolling down (scroll_factor 0.4) and Qt's
+      // own wheel handling is slow on top of that, so move it here instead.
+      // No buttons: clicks and drags still reach the cards.
+      MouseArea {
+        id: stripScroll
+        anchors.fill: strip
+        acceptedButtons: Qt.NoButton
+        readonly property real speed: 2.5
+
+        onWheel: function(wheel) {
+          var px = wheel.pixelDelta
+          var d
+          if (px.x !== 0 || px.y !== 0) {
+            d = Math.abs(px.x) > Math.abs(px.y) ? px.x : px.y
+          } else {
+            var a = wheel.angleDelta
+            d = (Math.abs(a.x) > Math.abs(a.y) ? a.x : a.y) / 2
+          }
+          var min = -strip.leftMargin
+          var max = Math.max(min, strip.contentWidth - strip.width + strip.rightMargin)
+          strip.contentX = Math.min(max, Math.max(min, strip.contentX - d * speed))
+          wheel.accepted = true
         }
       }
     }
