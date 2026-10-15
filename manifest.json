@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "id": "io.github.benjaminsehl.pages",
+  "name": "Pages",
+  "version": "1.0.0",
+  "author": "Benjamin Sehl",
+  "license": "MIT",
+  "description": "Workspaces as page dots; empty pages disappear",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Pages",
+    "description": "Workspaces as page dots; empty pages disappear",
+    "category": "Compositor",
+    "defaultSection": "left",
+    "allowMultiple": false
+  }
+}
