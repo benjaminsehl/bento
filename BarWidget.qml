@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Layouts
+import Quickshell
 import Quickshell.Hyprland
 import qs.Commons
 import qs.Ui
@@ -12,6 +13,14 @@ BarWidget {
   moduleName: "io.github.benjaminsehl.pages"
 
   readonly property int focusedId: Hyprland.focusedWorkspace ? Hyprland.focusedWorkspace.id : -1
+  readonly property string backgroundSource: "file://" + Quickshell.env("HOME") + "/.local/state/omarchy/current/background"
+
+  // Once a preview has been shown, sliding to a neighbouring dot previews it
+  // immediately instead of waiting out the hover delay again.
+  property bool previewWarm: false
+  property int openPreviews: 0
+  onOpenPreviewsChanged: if (openPreviews > 0) { previewWarm = true; coolDown.stop() } else coolDown.restart()
+  Timer { id: coolDown; interval: 400; onTriggered: root.previewWarm = false }
 
   readonly property var pageIds: {
     var ids = []
@@ -58,7 +67,25 @@ BarWidget {
         bar: root.bar
         hasVisualContent: true
         labelVisible: false
-        tooltipText: "Page " + modelData
+        readonly property bool hovering: page.tooltipHovered
+        property bool previewOpen: false
+        onPreviewOpenChanged: root.openPreviews += previewOpen ? 1 : -1
+        Component.onDestruction: if (previewOpen) root.openPreviews -= 1
+        onHoveringChanged: {
+          if (!hovering) { hoverDelay.stop(); previewOpen = false }
+          else if (!focused) { if (root.previewWarm) previewOpen = true; else hoverDelay.restart() }
+        }
+        onFocusedChanged: if (focused) { hoverDelay.stop(); previewOpen = false }
+
+        Timer { id: hoverDelay; interval: 250; onTriggered: page.previewOpen = page.hovering && !page.focused }
+
+        PagePreview {
+          anchorItem: page
+          bar: root.bar
+          workspaceId: page.modelData
+          backgroundSource: root.backgroundSource
+          open: page.previewOpen
+        }
         fixedWidth: root.vertical ? root.barSize : (focused ? root.pillLength + root.slot - root.dotSize : root.slot)
         fixedHeight: root.vertical ? (focused ? root.pillLength + root.slot - root.dotSize : root.slot) : root.barSize
         onPressed: function() { root.focusWorkspace(modelData) }

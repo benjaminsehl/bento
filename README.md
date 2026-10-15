@@ -4,9 +4,13 @@ An [Omarchy](https://omarchy.org) bar widget that shows workspaces as page dots 
 
 ![Pages in the Omarchy bar](preview.png)
 
+![Hovering a dot previews the page](preview-hover.png)
+
 - One dot per page that has windows. The page you're on is a wider, brighter pill.
 - Empty pages just disappear. Hyprland removes a workspace once you leave it empty.
 - Click a dot to go to that page.
+- Hover a dot to see a live preview of that page: your wallpaper plus each window, captured in place.
+  Slide along the dots to flip through previews.
 - Works in horizontal and vertical bars.
 
 ## Install
@@ -35,6 +39,8 @@ Edit the top of `BarWidget.qml`:
 
 - `dotSize`: the dot diameter in px
 - `slot`: the space each dot takes up in px
+
+In `PagePreview.qml`, `previewWidth` sets the preview's width (260 px by default).
 
 Run `omarchy restart shell` after editing. Hot reload can keep showing the cached version.
 
