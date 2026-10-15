@@ -101,10 +101,22 @@ local function toggle_scratchpad()
   end
 end
 
+local function minimized_count()
+  local n = 0
+  for _, w in ipairs(hl.get_windows()) do
+    if w.workspace and w.workspace.name == "special:minimized" then
+      n = n + 1
+    end
+  end
+  return n
+end
+
+-- With nothing minimized there's nothing to show, so do nothing rather than
+-- dim the screen over an empty workspace.
 local function down_or_minimized()
   if open_special() then
     hide_special()
-  else
+  elseif minimized_count() > 0 then
     show_special("minimized")
   end
 end
