@@ -266,7 +266,7 @@ Both trackpads. Finger counts as on a Mac set to four-finger Spaces.
 | Tap | Nothing: press to click | tap to click off |
 | Pinch two fingers | Zoom in the app | same |
 | Three fingers up | Show / hide the scratchpad, following your fingers | — |
-| Four fingers sideways | Switch workspace, following your fingers | Swipe between Spaces |
+| Three or four fingers sideways | Switch workspace, following your fingers | Swipe between Spaces |
 | Four fingers up | Overview (overview plugin phase; scratchpad until then) | Mission Control |
 | Four fingers down | Show / hide minimized windows | App Exposé |
 | Pinch thumb + three fingers | App launcher; when the desktop is showing, bring the windows back | Launchpad |

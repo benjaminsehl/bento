@@ -370,8 +370,9 @@ end
 -- ---------------------------------------------------------------- Trackpads
 hl.config({ input = { touchpad = { natural_scroll = true, tap_to_click = false } } })
 
--- Four fingers as on a Mac set to four-finger Spaces.
+-- Workspaces follow three or four fingers sideways.
 hl.gesture({ fingers = 4, direction = "horizontal", action = "workspace" })
+hl.gesture({ fingers = 3, direction = "horizontal", action = "workspace" })
 -- Up shows, down hides; four down with nothing open shows minimized windows.
 hl.gesture({ fingers = 4, direction = "up", action = function() show_special("scratchpad") end })
 hl.gesture({ fingers = 4, direction = "down", action = down_or_minimized })
