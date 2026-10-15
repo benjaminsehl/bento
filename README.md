@@ -8,6 +8,8 @@ An [Omarchy](https://omarchy.org) bar widget that shows workspaces as page dots 
 
 - One dot per page that has windows. The page you're on is a wider, brighter pill.
 - Empty pages just disappear. Hyprland removes a workspace once you leave it empty.
+- Close the last window on a page and you slide to the next page on the right.
+  On the rightmost page you stay on the empty screen.
 - `SUPER + N` goes to the Nth dot, so `SUPER + 2` is always the second dot, whatever its workspace number.
   `SUPER + SHIFT + N` moves the window there, and adding `ALT` moves it without following.
   A number past the last dot opens a new page at the end.

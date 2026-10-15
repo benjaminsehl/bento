@@ -150,6 +150,29 @@ for _, event in ipairs({
   hl.on(event, queue)
 end
 
+-- ------------------------------------------------------------- closing
+-- Close the last window on the page you're on and you slide to the next page
+-- on the right. On the rightmost page you stay on the empty screen.
+hl.on("window.close", function(w)
+  local ws = w and w.workspace
+  if not ws or ws.special or ws.id <= 0 then return end
+  local id = ws.id
+  local monitor = ws.monitor and ws.monitor.name
+  hl.timer(function()
+    local active = hl.get_active_workspace()
+    if not active or active.special or active.id ~= id or active.windows > 0 then return end
+    local next_id
+    for _, other in ipairs(hl.get_workspaces()) do
+      if not other.special and other.id > id and other.windows > 0
+        and (other.monitor and other.monitor.name) == monitor
+        and (not next_id or other.id < next_id) then
+        next_id = other.id
+      end
+    end
+    if next_id then hl.dispatch(hl.dsp.focus({ workspace = tostring(next_id) })) end
+  end, { timeout = 30, type = "oneshot" })
+end)
+
 -- New sessions start at workspace 1001, leaving room on the left.
 hl.on("hyprland.start", function()
   hl.dispatch(hl.dsp.focus({ workspace = tostring(BASE + 1) }))
