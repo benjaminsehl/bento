@@ -8,6 +8,9 @@ An [Omarchy](https://omarchy.org) bar widget that shows workspaces as page dots 
 
 - One dot per page that has windows. The page you're on is a wider, brighter pill.
 - Empty pages just disappear. Hyprland removes a workspace once you leave it empty.
+- `SUPER + N` goes to the Nth dot, so `SUPER + 2` is always the second dot, whatever its workspace number.
+  `SUPER + SHIFT + N` moves the window there, and adding `ALT` moves it without following.
+  A number past the last dot opens a new page at the end.
 - Click a dot to go to that page.
 - Hover a dot to see a live preview of that page: your wallpaper plus each window, captured in place.
   Slide along the dots to flip through previews.
@@ -18,6 +21,14 @@ An [Omarchy](https://omarchy.org) bar widget that shows workspaces as page dots 
 ```bash
 omarchy plugin add https://github.com/benjaminsehl/omarchy-pages.git --enable
 ```
+
+Then make the number keys follow the dots. This replaces Omarchy's `SUPER + 1…0` workspace bindings:
+
+```bash
+~/.config/omarchy/plugins/io.github.benjaminsehl.pages/install.sh
+```
+
+Run `uninstall.sh` from the same folder to restore the default bindings.
 
 To replace the built-in numbers, disable `omarchy.workspaces`. You can also swap the id
 `omarchy.workspaces` for `io.github.benjaminsehl.pages` in `~/.config/omarchy/shell.json`.
