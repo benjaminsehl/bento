@@ -1,0 +1,38 @@
+// Mac modifiers in Mac positions, on top of English (Macintosh, ABC).
+// Linux sees: ⌘ = Ctrl, ⌃ = Super, ⌥ = Option (ISO_Level3_Shift, Mod5).
+// Caps Lock = F13 (push-to-talk dictation).
+
+partial modifier_keys
+xkb_symbols "apple" {
+    include "us(mac)"
+    name[Group1] = "English (Mac modifiers, Apple keyboard)";
+
+    replace key <LCTL> { [ Super_L ] };
+    replace key <LWIN> { [ Control_L ] };
+    replace key <RWIN> { [ Control_R ] };
+    replace key <LALT> { type = "ONE_LEVEL", [ ISO_Level3_Shift ] };
+    replace key <RALT> { type = "ONE_LEVEL", [ ISO_Level3_Shift ] };
+    replace key <CAPS> { type = "ONE_LEVEL", [ F13 ] };
+
+    modifier_map Mod4    { <LCTL> };
+    modifier_map Control { <LWIN>, <RWIN> };
+    modifier_map Mod5    { <LALT>, <RALT> };
+};
+
+partial modifier_keys
+xkb_symbols "pc" {
+    include "us(mac)"
+    name[Group1] = "English (Mac modifiers, PC keyboard)";
+
+    // PC row: Ctrl, Win, Alt | Space | Alt, Ctrl  ->  ⌃ ⌥ ⌘ | Space | ⌘ ⌥
+    replace key <LCTL> { [ Super_L ] };
+    replace key <LWIN> { type = "ONE_LEVEL", [ ISO_Level3_Shift ] };
+    replace key <LALT> { [ Control_L ] };
+    replace key <RALT> { type = "ONE_LEVEL", [ Control_R ] };
+    replace key <RCTL> { type = "ONE_LEVEL", [ ISO_Level3_Shift ] };
+    replace key <CAPS> { type = "ONE_LEVEL", [ F13 ] };
+
+    modifier_map Mod4    { <LCTL> };
+    modifier_map Control { <LALT>, <RALT> };
+    modifier_map Mod5    { <LWIN>, <RCTL> };
+};
