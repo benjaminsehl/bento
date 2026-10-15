@@ -1,7 +1,7 @@
-# Key map (draft 2: the ⌘/⌃ swap)
+# Key map
 
-Status: **draft for review**. Nothing here is implemented yet. ❓ marks open
-questions. Results of the hands-on tests are in `spikes/results-round1.log`.
+Status: **live** on the author's machine (installed from a local checkout), and
+changing as it gets used. ❓ marks open questions. Results of the hands-on tests are in `spikes/results-round1.log`.
 
 Keys are written as you press them, by their Mac name, on either keyboard.
 
@@ -102,6 +102,7 @@ Omarchy's Super bindings, unchanged, now on ⌃:
 | Keys | Does |
 |---|---|
 | ⌃1–9 | Workspace N (macOS: Switch to Desktop N) |
+| ⌃⇧ arrows | Swap window in that direction |
 | ⌃⇧1–9 | Move window to workspace N |
 | ⌃⇧⌥1–9 | Move window to workspace N, stay here |
 | ⌃Space | Omarchy menu |
@@ -147,9 +148,8 @@ Omarchy keys this frees or moves:
 | Keys | Does | Omarchy had |
 |---|---|---|
 | ⌃⌥ arrows | Focus window in that direction | ⌃ arrows |
-| ⌃⌥⇧ arrows | Swap window in that direction | ⌃⇧ arrows |
 | ⌃⌥F | Full screen | ⌃F |
-| ⌃⌥↩ | Full width / maximize (Rectangle's key) | ⌃⌥F |
+| ⌃⌥↩ | Full width / maximize (Rectangle's key) | ⌃⌥F (Omarchy's tmux key ⌃⌥↩ is dropped) |
 | ⌃⌥T | Float / tile | ⌃T |
 | ⌃⌥O | Pop out (float and pin on top) | ⌃O |
 | ⌃⌥L | Workspace layout | ⌃L |
@@ -170,7 +170,7 @@ These match macOS already, or change to:
 
 | Keys | Does | Omarchy had |
 |---|---|---|
-| ⌃⌘F | Full screen (macOS key) | tiled full screen → ⌃⌥⇧F |
+| ⌃⌘F | Full screen (macOS key) | tiled full screen → ⌃⌥⌘F |
 | ⌃⌘Q | Lock screen (macOS key) | calculator → no key (⌘Space "calc") |
 | ⌃⌘Space | Emoji picker (macOS key) | wallpaper picker → no key (Omarchy menu → Style) |
 | ⌃⌘K | Keybindings menu, in Mac symbols | Herdr keybindings → dropped |

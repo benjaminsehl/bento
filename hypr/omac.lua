@@ -1,18 +1,28 @@
--- omac: Mac-style keys, scrolling and gestures for Omarchy.
+-- omac: Mac keys, gestures and Option characters for Omarchy.
 --
 -- install.sh loads this file from ~/.local/state/omarchy/toggles/hypr/, which
 -- Omarchy loads after ~/.config/hypr/bindings.lua. Run `hyprctl reload` after
--- editing it.
+-- editing it. The key map, with reasons, is docs/keymap.md.
 --
--- Super is ⌘ here. With keyd mapping Left Alt to Super, that is the key next
--- to Space, where ⌘ sits on a Mac keyboard.
+-- omac's keyboard layout (xkb/symbols/omac) swaps the modifiers themselves:
 --
--- The ⌘-letter shortcuts and their terminal rule follow Macifier
--- (github.com/omeganter/macifier).
+--   you press   Linux sees          so
+--   ⌘           CTRL                apps get native Ctrl shortcuts
+--   ⌃           SUPER               Omarchy's Super bindings live on ⌃
+--   ⌥           MOD5 (Option)       Mac special characters
+--
+-- Bindings below are written the way Linux sees them, with the Mac keys in
+-- the comments.
 
--- Same send technique as Omarchy's own clipboard bindings, including the
--- down/up split that works around Hyprland leaving synthetic key state stuck
--- (hyprwm/Hyprland#14099).
+local home = os.getenv("HOME")
+local omarchy = os.getenv("OMARCHY_PATH") or "/usr/share/omarchy"
+local state = home .. "/.local/state/omac"
+
+-- ------------------------------------------------------------------ Helpers
+
+-- Same send technique as Omarchy's clipboard bindings, with the down/up split
+-- that works around Hyprland leaving synthetic key state stuck
+-- (hyprwm/Hyprland#14099). Sent keys never trigger Hyprland's own bindings.
 local function send_once(mods, key)
   hl.dispatch(hl.dsp.send_key_state({ mods = mods, key = key, state = "down" }))
   hl.timer(function()
@@ -20,215 +30,333 @@ local function send_once(mods, key)
   end, { timeout = 50, type = "oneshot" })
 end
 
--- Dynamic tags carry a trailing "*".
-local function active_window_is_terminal()
-  local window = hl.get_active_window()
-  if not window then
-    return false
-  end
-
-  for _, tag in ipairs(window.tags or {}) do
+-- Omarchy's `terminal` window tag; dynamic tags carry a trailing "*".
+local function is_terminal(window)
+  window = window or hl.get_active_window()
+  for _, tag in ipairs(window and window.tags or {}) do
     if tag:gsub("%*$", "") == "terminal" then
       return true
     end
   end
-
   return false
 end
 
--- --------------------------------------------------------------- ⌘ + letter
---
--- Each sends Ctrl + the same letter. In a terminal those control codes mean
--- something else (Ctrl+Z suspends, Ctrl+D closes the shell), so do nothing
--- there rather than the wrong thing.
-local function forward(mods, key)
-  return function()
-    if active_window_is_terminal() then
-      return
+local browsers = { "chrom", "firefox", "brave", "zen", "helium", "vivaldi" }
+local function is_browser(window)
+  local class = ((window or hl.get_active_window() or {}).class or ""):lower()
+  for _, name in ipairs(browsers) do
+    if class:find(name, 1, true) then
+      return true
     end
-    send_once(mods, key)
+  end
+  return false
+end
+
+-- A key that sends one thing to apps and another (or nothing) to terminals.
+local function send(app, term)
+  return function()
+    local to = is_terminal() and term or app
+    if to then
+      send_once(to[1], to[2])
+    end
   end
 end
 
-o.bind("SUPER + A", "Select all", forward("CTRL", "A"))
-o.bind("SUPER + B", "Bold", forward("CTRL", "B"))
-o.bind("SUPER + D", "Duplicate / bookmark", forward("CTRL", "D"))
-o.bind("SUPER + E", "Search / edit", forward("CTRL", "E"))
-o.bind("SUPER + I", "Italic", forward("CTRL", "I"))
-o.bind("SUPER + N", "New", forward("CTRL", "N"))
-o.bind("SUPER + R", "Reload", forward("CTRL", "R"))
-o.bind("SUPER + U", "Underline", forward("CTRL", "U"))
-o.bind("SUPER + Y", "Redo (Windows-style)", forward("CTRL", "Y"))
-o.bind("SUPER + Z", "Undo", forward("CTRL", "Z"))
-o.bind("SUPER + SHIFT + Z", "Redo", forward("CTRL SHIFT", "Z"))
-
--- macOS quits the application. Hyprland has no notion of one, so closing the
--- window is the closest honest equivalent.
-o.bind("SUPER + Q", "Close window", hl.dsp.window.close())
-
--- These letters hold Omarchy window bindings, which move to CTRL + ALT + the
--- same letter.
-hl.unbind("SUPER + T")
-o.bind("CTRL + ALT + T", "Toggle window floating/tiling", hl.dsp.window.float({ action = "toggle" }))
-o.bind("SUPER + T", "New tab", forward("CTRL", "T"))
-
-hl.unbind("SUPER + L")
-o.bind("CTRL + ALT + L", "Toggle workspace layout", "omarchy-hyprland-workspace-layout-toggle")
-o.bind("SUPER + L", "Address bar", forward("CTRL", "L"))
-
--- ---------------------------------------------------------------- ⌘ + arrow
---
--- Caret moves as on a Mac: line start and end, document top and bottom, and
--- with ⇧ the same moves select. In a terminal only ⌘← and ⌘→ apply, as Home
--- and End, which shells and Claude Code read as line start and end.
-local function caret(mods, key, in_terminal)
-  return function()
-    if active_window_is_terminal() and not in_terminal then
-      return
-    end
-    send_once(mods, key)
-  end
+local function rebind(keys, description, dispatcher, options)
+  hl.unbind(keys)
+  o.bind(keys, description, dispatcher, options)
 end
 
-local arrows = {
-  { key = "LEFT", dir = "l", to = "Home", where = "left", swap = "to the left" },
-  { key = "RIGHT", dir = "r", to = "End", where = "right", swap = "to the right" },
-  { key = "UP", dir = "u", to = "Home", ctrl = true, where = "above", swap = "up" },
-  { key = "DOWN", dir = "d", to = "End", ctrl = true, where = "below", swap = "down" },
+local function exists(path)
+  local f = io.open(path, "r")
+  if f then
+    f:close()
+  end
+  return f ~= nil
+end
+
+-- ---------------------------------------------------------------- Keyboards
+--
+-- install.sh compiles one keymap per keyboard type into ~/.local/state/omac.
+-- Keyboards not listed keep Omarchy's layout.
+local keyboards = {
+  { name = "apple-inc.-magic-keyboard-with-touch-id", keymap = "apple" },
+  { name = "at-translated-set-2-keyboard", keymap = "pc" },
 }
-
-for _, a in ipairs(arrows) do
-  -- Omarchy's window focus and swap move to CTRL + ALT, as ⌘T and ⌘L do.
-  hl.unbind("SUPER + " .. a.key)
-  hl.unbind("SUPER + SHIFT + " .. a.key)
-  o.bind("CTRL + ALT + " .. a.key, "Focus on " .. a.where .. " window", hl.dsp.focus({ direction = a.dir }))
-  o.bind("CTRL + ALT + SHIFT + " .. a.key, "Swap window " .. a.swap, hl.dsp.window.swap({ direction = a.dir }))
-
-  local mods = a.ctrl and "CTRL" or ""
-  local label = a.ctrl and (a.key == "UP" and "Document start" or "Document end")
-    or (a.key == "LEFT" and "Line start" or "Line end")
-  o.bind("SUPER + " .. a.key, label, caret(mods, a.to, not a.ctrl))
-  o.bind("SUPER + SHIFT + " .. a.key, "Select to " .. label:lower(), caret(mods == "" and "SHIFT" or "CTRL SHIFT", a.to, false))
+for _, k in ipairs(keyboards) do
+  local file = state .. "/keymap-" .. k.keymap .. ".xkb"
+  if exists(file) then
+    hl.device({ name = k.name, kb_file = file })
+  end
 end
 
--- ⌥← and ⌥→ move by word, ⇧ to select. Linux spells that Ctrl+arrow, which
--- bash reads as a word move too, so the plain move also works in terminals.
-for _, key in ipairs({ "LEFT", "RIGHT" }) do
-  local side = key == "LEFT" and "back" or "forward"
-  o.bind("ALT + " .. key, "Word " .. side, caret("CTRL", key, true))
-  o.bind("ALT + SHIFT + " .. key, "Select word " .. side, caret("CTRL SHIFT", key, false))
-end
-
--- Taking ⌥← and ⌥→ costs browsers their Alt+arrow back and forward, so give
--- them the Mac keys for it, ⌘[ and ⌘].
-o.bind("SUPER + BRACKETLEFT", "Back", caret("ALT", "LEFT", false))
-o.bind("SUPER + BRACKETRIGHT", "Forward", caret("ALT", "RIGHT", false))
-
--- ⇧⌘] and ⇧⌘[ switch tabs, as in Safari and Chrome on a Mac.
-o.bind("SUPER + SHIFT + BRACKETRIGHT", "Next tab", caret("CTRL", "Tab", false))
-o.bind("SUPER + SHIFT + BRACKETLEFT", "Previous tab", caret("CTRL SHIFT", "Tab", false))
-
--- ---------------------------------------------------------------------- ⌘W
+-- ------------------------------------------------- Omarchy's Alt, on Option
 --
--- Close the tab, or the window when no tab closed. Terminals use Ctrl+W to
--- delete a word, so there it closes the window.
-local function close_tab_or_window()
+-- No key sends Alt any more, so every Omarchy binding that uses ALT would be
+-- out of reach. Re-read Omarchy's own binding files and register each of those
+-- again with ALT replaced by MOD5 (⌥). Everything else they bind is skipped,
+-- so nothing is bound twice, and Omarchy updates carry over.
+do
+  local real_bind, real_on = hl.bind, hl.on
+  hl.bind = function(keys, dispatcher, opts)
+    if type(keys) == "string" and keys:find("%f[%w]ALT%f[%W]") then
+      real_bind((keys:gsub("%f[%w]ALT%f[%W]", "MOD5")), dispatcher, opts)
+    end
+  end
+  hl.on = function() end
+  for _, file in ipairs({ "media", "clipboard", "tiling", "utilities", "voxtype", "applications" }) do
+    local path = omarchy .. "/default/hypr/bindings/" .. file .. ".lua"
+    if exists(path) then
+      pcall(dofile, path)
+    end
+  end
+  hl.bind, hl.on = real_bind, real_on
+end
+
+-- ------------------------------------------------------- ⌃ + letter: shell
+--
+-- macOS uses plain ⌃ + letter for shell and line-editing keys. Omarchy's
+-- Super+letter bindings go: copy/paste/cut and close are native on ⌘ now, and
+-- the window actions move to ⌃⌥ below. Ghostty turns ⌃ + letter into control
+-- characters (ghostty/omac.conf).
+for _, key in ipairs({ "C", "V", "X", "W", "J", "P", "T", "F", "O", "L", "S", "G", "K" }) do
+  hl.unbind("SUPER + " .. key)
+end
+
+-- ⌃A ⌃E ⌃K edit the line in any app, as on a Mac. Terminals get the key itself.
+local function line_key(app_steps, key)
+  return function()
+    if is_terminal() then
+      send_once("SUPER", key)
+      return
+    end
+    for i, step in ipairs(app_steps) do
+      hl.timer(function() send_once(step[1], step[2]) end, { timeout = 1 + (i - 1) * 80, type = "oneshot" })
+    end
+  end
+end
+o.bind("SUPER + A", "Line start", line_key({ { "", "Home" } }, "A"))
+o.bind("SUPER + E", "Line end", line_key({ { "", "End" } }, "E"))
+o.bind("SUPER + K", "Delete to line end", line_key({ { "SHIFT", "End" }, { "", "Delete" } }, "K"))
+
+-- -------------------------------------------------------------- ⌃⌥: windows
+rebind("SUPER + MOD5 + F", "Full screen", hl.dsp.window.fullscreen({ mode = "fullscreen" }))
+rebind("SUPER + MOD5 + RETURN", "Full width", hl.dsp.window.fullscreen({ mode = "maximized" }))
+rebind("SUPER + MOD5 + T", "Toggle window floating/tiling", hl.dsp.window.float({ action = "toggle" }))
+rebind("SUPER + MOD5 + O", "Pop window out (float & pin)", "omarchy-hyprland-window-pop")
+rebind("SUPER + MOD5 + L", "Toggle workspace layout", "omarchy-hyprland-workspace-layout-toggle")
+rebind("SUPER + MOD5 + S", "Toggle scratchpad", hl.dsp.workspace.toggle_special("scratchpad"))
+rebind("SUPER + MOD5 + SHIFT + S", "Move window to scratchpad", hl.dsp.window.move({ workspace = "special:scratchpad", follow = false }))
+rebind("SUPER + CTRL + MOD5 + F", "Tiled full screen", "omarchy-hyprland-window-tiled-fullscreen-toggle")
+
+for _, a in ipairs({ { "LEFT", "l", "left" }, { "RIGHT", "r", "right" }, { "UP", "u", "above" }, { "DOWN", "d", "below" } }) do
+  rebind("SUPER + MOD5 + " .. a[1], "Focus on " .. a[3] .. " window", hl.dsp.focus({ direction = a[2] }))
+end
+
+-- --------------------------------------------------------- ⌃: desktops
+rebind("SUPER + LEFT", "Previous workspace", hl.dsp.focus({ workspace = "e-1" }))
+rebind("SUPER + RIGHT", "Next workspace", hl.dsp.focus({ workspace = "e+1" }))
+rebind("SUPER + UP", "Toggle scratchpad", hl.dsp.workspace.toggle_special("scratchpad"))
+rebind("SUPER + DOWN", "Show minimized windows", hl.dsp.workspace.toggle_special("minimized"))
+
+-- ⌃Tab is the app's next tab, as on a Mac.
+rebind("SUPER + TAB", "Next tab", send({ "CTRL", "Tab" }, { "CTRL", "Tab" }))
+rebind("SUPER + SHIFT + TAB", "Previous tab", send({ "CTRL SHIFT", "Tab" }, { "CTRL SHIFT", "Tab" }))
+
+-- ------------------------------------------------- ⌘: what apps don't know
+--
+-- Caret keys. Terminals get the key itself; Ghostty maps it the macOS way.
+local caret = {
+  { "CTRL + LEFT", "Line start", { "", "Home" }, { "CTRL", "LEFT" } },
+  { "CTRL + RIGHT", "Line end", { "", "End" }, { "CTRL", "RIGHT" } },
+  { "CTRL + UP", "Document start", { "CTRL", "Home" }, { "CTRL", "UP" } },
+  { "CTRL + DOWN", "Document end", { "CTRL", "End" }, { "CTRL", "DOWN" } },
+  { "CTRL + SHIFT + LEFT", "Select to line start", { "SHIFT", "Home" } },
+  { "CTRL + SHIFT + RIGHT", "Select to line end", { "SHIFT", "End" } },
+  { "CTRL + SHIFT + UP", "Select to document start", { "CTRL SHIFT", "Home" } },
+  { "CTRL + SHIFT + DOWN", "Select to document end", { "CTRL SHIFT", "End" } },
+  { "MOD5 + LEFT", "Word back", { "CTRL", "LEFT" }, { "ALT", "LEFT" } },
+  { "MOD5 + RIGHT", "Word forward", { "CTRL", "RIGHT" }, { "ALT", "RIGHT" } },
+  { "MOD5 + SHIFT + LEFT", "Select word back", { "CTRL SHIFT", "LEFT" } },
+  { "MOD5 + SHIFT + RIGHT", "Select word forward", { "CTRL SHIFT", "RIGHT" } },
+  { "MOD5 + UP", "Move line up", { "ALT", "UP" }, { "ALT", "UP" } },
+  { "MOD5 + DOWN", "Move line down", { "ALT", "DOWN" }, { "ALT", "DOWN" } },
+  { "MOD5 + BACKSPACE", "Delete word", { "CTRL", "BackSpace" }, { "ALT", "BackSpace" } },
+}
+for _, c in ipairs(caret) do
+  rebind(c[1], c[2], send(c[3], c[4]))
+end
+
+-- ⌘⌫: delete to line start. Ghostty has its own ⌘⌫.
+o.bind("CTRL + BACKSPACE", "Delete to line start", function()
+  if is_terminal() then
+    send_once("CTRL", "BackSpace")
+    return
+  end
+  send_once("SHIFT", "Home")
+  hl.timer(function() send_once("", "BackSpace") end, { timeout = 80, type = "oneshot" })
+end)
+
+-- ⌘[ ⌘]: back / forward in browsers; everywhere else the app's own ⌘[ ⌘]
+-- (VS Code indents with them).
+local function browser_or_self(browser_key, key)
+  return function()
+    if is_browser() then
+      send_once("ALT", browser_key)
+    else
+      send_once("CTRL", key)
+    end
+  end
+end
+o.bind("CTRL + BRACKETLEFT", "Back", browser_or_self("LEFT", "bracketleft"))
+o.bind("CTRL + BRACKETRIGHT", "Forward", browser_or_self("RIGHT", "bracketright"))
+
+-- ⌘⇧[ ⌘⇧]: previous / next tab. Ghostty has its own.
+o.bind("CTRL + SHIFT + BRACKETLEFT", "Previous tab", send({ "CTRL SHIFT", "Tab" }, { "CTRL SHIFT", "bracketleft" }))
+o.bind("CTRL + SHIFT + BRACKETRIGHT", "Next tab", send({ "CTRL", "Tab" }, { "CTRL SHIFT", "bracketright" }))
+
+-- ⌘W: close the tab, and the window once no tab closed. Hyprland can't see
+-- tabs, so send Ctrl+W and look again 300 ms later: a closed tab changes the
+-- title, a closed last tab or a save dialog moves focus. Browsers and
+-- terminals close their own last tab's window.
+o.bind("CTRL + W", "Close tab", function()
   local window = hl.get_active_window()
   if not window then
     return
   end
-
-  if active_window_is_terminal() then
-    hl.dispatch(hl.dsp.window.close())
+  send_once("CTRL", "W")
+  if is_terminal(window) or is_browser(window) then
     return
   end
-
   local address, title = window.address, window.title
-  send_once("CTRL", "W")
-
-  -- Browsers close the window on the last tab themselves, and two tabs can share
-  -- a title ("New Tab"), which would fool the check below.
-  local class = (window.class or ""):lower()
-  for _, browser in ipairs({ "helium", "chrom", "firefox", "brave", "zen" }) do
-    if class:find(browser, 1, true) then
-      return
-    end
-  end
-
-  -- A closed tab changes the title, and a closed last tab or an unsaved-changes
-  -- dialog moves focus. Same window with the same title means Ctrl+W did nothing.
   hl.timer(function()
     local now = hl.get_active_window()
     if now and now.address == address and now.title == title then
       hl.dispatch(hl.dsp.window.close())
     end
   end, { timeout = 300, type = "oneshot" })
+end)
+
+-- ⌘Q: quit the app by closing every window it has. Each app still gets to
+-- ask about unsaved work.
+o.bind("CTRL + Q", "Quit app", function()
+  local window = hl.get_active_window()
+  if not window or not window.class or window.class == "" then
+    return
+  end
+  for _, w in ipairs(hl.get_windows({ class = window.class })) do
+    hl.dispatch(hl.dsp.window.close({ window = "address:" .. w.address }))
+  end
+end)
+
+-- ⌘M: minimize into a hidden workspace; ⌃↓ or four fingers down shows them.
+o.bind("CTRL + M", "Minimize window", hl.dsp.window.move({ workspace = "special:minimized", follow = false }))
+
+-- ⌘Tab ⌘⇧Tab: next / previous window. ⌘`: next window of the same app.
+o.bind("CTRL + TAB", "Next window", hl.dsp.window.cycle_next())
+o.bind("CTRL + TAB", "Reveal active window on top", hl.dsp.window.bring_to_top())
+o.bind("CTRL + SHIFT + TAB", "Previous window", hl.dsp.window.cycle_next({ next = false }))
+o.bind("CTRL + SHIFT + TAB", "Reveal active window on top", hl.dsp.window.bring_to_top())
+o.bind("CTRL + GRAVE", "Next window of the same app", function()
+  local window = hl.get_active_window()
+  if not window then
+    return
+  end
+  local same = hl.get_windows({ class = window.class })
+  if #same < 2 then
+    return
+  end
+  table.sort(same, function(a, b) return a.address < b.address end)
+  for i, w in ipairs(same) do
+    if w.address == window.address then
+      local nxt = same[i % #same + 1]
+      hl.dispatch(hl.dsp.focus({ window = "address:" .. nxt.address }))
+      return
+    end
+  end
+end)
+
+-- ⌘Space: app launcher. ⌃Space stays Omarchy's menu.
+o.bind("CTRL + SPACE", "Apps menu", "omarchy-menu toggle apps")
+
+-- ⌘↩ ⌘⇧↩: terminal and browser, like Omarchy's ⌃↩ ⌃⇧↩.
+o.bind("CTRL + RETURN", "Terminal", { omarchy = "terminal" })
+o.bind("CTRL + SHIFT + RETURN", "Browser", { omarchy = "browser" })
+
+-- ⌘⇧3 ⌘⇧4 ⌘⇧5 screenshots; ⌃ added copies to the clipboard only. Number
+-- keys bind by key code (3 is code:12), since Shift changes their symbol.
+o.bind("CTRL + SHIFT + code:12", "Screenshot of the screen", "omarchy-capture-screenshot fullscreen")
+o.bind("CTRL + SHIFT + code:13", "Screenshot of an area or window", "omarchy-capture-screenshot smart")
+o.bind("CTRL + SHIFT + code:14", "Capture menu", "omarchy-menu toggle trigger.capture")
+o.bind("SUPER + CTRL + SHIFT + code:12", "Copy the screen", "omarchy-capture-screenshot fullscreen copy")
+o.bind("SUPER + CTRL + SHIFT + code:13", "Copy an area or window", "omarchy-capture-screenshot smart copy")
+
+-- ⌥⌘Esc: force quit.
+o.bind("CTRL + MOD5 + ESCAPE", "Force quit window", hl.dsp.window.kill())
+
+-- --------------------------------------------------- ⌃⌘: macOS's own keys
+rebind("SUPER + CTRL + F", "Full screen", hl.dsp.window.fullscreen({ mode = "fullscreen" }))
+rebind("SUPER + CTRL + Q", "Lock system", "omarchy-system-lock")
+rebind("SUPER + CTRL + SPACE", "Emojis", "omarchy-shell shell toggle omarchy.emojis")
+rebind("SUPER + CTRL + K", "Keybindings", home .. "/.local/bin/mac-keybindings")
+
+-- ---------------------------------------------------- Magic Keyboard top row
+--
+-- With hid_apple fnmode=1 (system/apple-fnmode.sh) the top row sends its Mac
+-- functions without fn.
+local apple = { inclusive = true, list = { "apple-inc.-magic-keyboard-with-touch-id" } }
+local not_apple = { inclusive = false, list = { "apple-inc.-magic-keyboard-with-touch-id" } }
+
+o.bind("XF86LaunchA", "Mission Control (scratchpad for now)", hl.dsp.workspace.toggle_special("scratchpad"))
+o.bind("XF86Search", "Apps menu", "omarchy-menu toggle apps")
+hl.unbind("XF86AudioMicMute")
+o.bind("XF86AudioMicMute", "Mute microphone", "omarchy-audio-input-mute", { locked = true, device = not_apple })
+if o.cmd_present("voxtype") then
+  o.bind("XF86AudioMicMute", "Toggle dictation", "voxtype record toggle", { device = apple })
+end
+o.bind_toggle("XF86Sleep", "Toggle silencing notifications", "notification-silencing")
+
+-- ----------------------------------------------- Caps Lock: push-to-talk
+--
+-- The keymap makes Caps Lock F13. F9 goes back to apps (VS Code breakpoints).
+hl.unbind("F9")
+if o.cmd_present("voxtype") then
+  o.bind("F13", "Start dictation (push-to-talk)", "voxtype record start")
+  o.bind("F13", "Stop dictation (push-to-talk)", "voxtype record stop", { release = true })
 end
 
-hl.unbind("SUPER + W")
-o.bind("SUPER + W", "Close tab", close_tab_or_window)
+-- ---------------------------------------------------------------- Trackpads
+hl.config({ input = { touchpad = { natural_scroll = true, tap_to_click = false } } })
 
--- ---------------------------------------------------------------------- ⌘V
---
--- Omarchy's universal paste sends Shift+Insert in terminals, which only pastes
--- text. Terminal apps like Claude Code read a clipboard image on Ctrl+V, so
--- mac-paste sends that when the clipboard holds an image.
---
--- Never check the clipboard from here: wl-paste needs Hyprland to answer, so
--- waiting on it from the config freezes the whole desktop. mac-paste runs as
--- its own process and sends the keys back with hyprctl.
-local function universal_paste()
-  if active_window_is_terminal() then
-    hl.exec_cmd(os.getenv("HOME") .. "/.local/bin/mac-paste")
+-- Four fingers as on a Mac set to four-finger Spaces.
+hl.gesture({ fingers = 4, direction = "horizontal", action = "workspace" })
+hl.gesture({ fingers = 4, direction = "up", action = function() hl.dispatch(hl.dsp.workspace.toggle_special("scratchpad")) end })
+hl.gesture({ fingers = 4, direction = "down", action = function() hl.dispatch(hl.dsp.workspace.toggle_special("minimized")) end })
+hl.gesture({ fingers = 3, direction = "up", action = function() hl.dispatch(hl.dsp.workspace.toggle_special("scratchpad")) end })
+
+-- Show Desktop and Launchpad. Hyprland's names are the other way round from
+-- the gesture: a spread fires "pinchin", a pinch "pinchout".
+local desktop_from = nil
+local function show_desktop()
+  if desktop_from then
+    hl.dispatch(hl.dsp.focus({ workspace = desktop_from }))
+    desktop_from = nil
   else
-    send_once("CTRL", "V")
+    local ws = hl.get_active_workspace()
+    desktop_from = ws and tostring(ws.id) or nil
+    hl.dispatch(hl.dsp.focus({ workspace = "empty" }))
   end
 end
+hl.gesture({ fingers = 4, direction = "pinchin", action = show_desktop })
+hl.gesture({ fingers = 4, direction = "pinchout", action = function()
+  if desktop_from then
+    show_desktop()
+  else
+    hl.exec_cmd("omarchy-menu toggle apps")
+  end
+end })
 
-hl.unbind("SUPER + V")
-o.bind("SUPER + V", "Universal paste", universal_paste)
-
--- -------------------------------------------------------------- Screenshots
---
--- macOS screenshots with ⌥ standing in for ⌘, because Super+Shift+number
--- moves windows between workspaces. Number keys bind by key code (3 is
--- code:12), since Shift changes the symbol they type.
---
---   ⇧⌥3   whole screen         ⌃⇧⌥3   whole screen to the clipboard
---   ⇧⌥4   area, or a window    ⌃⇧⌥4   area or window to the clipboard
---   ⇧⌥5   capture menu: screenshot, recording, text, colour
---
--- Like a Mac, a plain capture saves a file and shows a thumbnail to click and
--- mark up. Omarchy's capture also copies it to the clipboard.
-o.bind("ALT + SHIFT + code:12", "Screenshot of the screen", "omarchy-capture-screenshot fullscreen")
-o.bind("ALT + SHIFT + code:13", "Screenshot of an area or window", "omarchy-capture-screenshot smart")
-o.bind("ALT + SHIFT + code:14", "Capture menu", "omarchy-menu toggle trigger.capture")
-o.bind("CTRL + ALT + SHIFT + code:12", "Copy the screen", "omarchy-capture-screenshot fullscreen copy")
-o.bind("CTRL + ALT + SHIFT + code:13", "Copy an area or window", "omarchy-capture-screenshot smart copy")
-
--- -------------------------------------------------------------- Keybindings
---
--- The same list as Omarchy's, in Mac menu symbols: ⇧⌘↩, not
--- SUPER SHIFT + RETURN.
-hl.unbind("SUPER + K")
-o.bind("SUPER + K", "Keybindings", "mac-keybindings")
-
--- ------------------------------------------------------- Trackpad scrolling
---
--- macOS has shipped natural scrolling since 2011; Omarchy ships PC-style.
-hl.config({ input = { touchpad = { natural_scroll = true } } })
-
--- ----------------------------------------------------------------- Gestures
---
--- Two fingers can never be a gesture: libinput reads them as scrolling, and
--- only three or more as a swipe.
-
--- Three fingers sideways moves between workspaces, following your fingers.
-hl.gesture({ fingers = 3, direction = "horizontal", action = "workspace" })
-
--- As on a Mac, a slow drag is a peek: it snaps back unless it passes half the
--- screen. A quick flick commits however short it is. Hyprland's default flick
--- speed (30) is so high that short flicks snap back too.
+-- A flick switches; a slow drag peeks and snaps back unless past halfway.
 hl.config({
   gestures = {
     workspace_swipe_min_speed_to_force = 10,
@@ -236,8 +364,6 @@ hl.config({
   },
 })
 
--- Omarchy turns workspace animations off, so a released swipe jumps the rest
--- of the way. Slide it home instead, ease-out cubic, in 180 ms (speed is in
--- tenths of a second). This also animates Super+1..9 switches.
+-- Omarchy turns workspace animations off; slide home in 180 ms instead.
 hl.curve("easeOutCubic", { type = "bezier", points = { { 0.33, 1 }, { 0.68, 1 } } })
 hl.animation({ leaf = "workspaces", enabled = true, speed = 1.8, bezier = "easeOutCubic", style = "slide" })

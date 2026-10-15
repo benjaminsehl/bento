@@ -1,3 +1,9 @@
+> **This fork is being reworked.** It swaps ⌘ and ⌃ at the keyboard layout,
+> so apps get native Ctrl shortcuts and Omarchy lives on ⌃. The current key map
+> is [`docs/keymap.md`](docs/keymap.md); the README below is still upstream's
+> and partly out of date. Install from a checkout with `./install.sh`; the
+> Magic Keyboard's Mac top row is `sudo system/apple-fnmode.sh`.
+
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/images/icon-dark.svg">

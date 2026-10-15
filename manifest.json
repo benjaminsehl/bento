@@ -1,11 +1,15 @@
 {
   "schemaVersion": 1,
-  "id": "io.github.nchudleigh.omac",
+  "id": "io.github.benjaminsehl.omac",
   "name": "omac",
-  "version": "1.0.0",
-  "author": "Neil Chudleigh",
+  "version": "2.0.0-dev",
+  "author": "Benjamin Sehl (fork of Neil Chudleigh's omac)",
   "license": "MIT",
-  "description": "Mac-like nav for Omarchy: ⌘ shortcuts, Mac caret movement, tab-aware ⌘W, image paste in terminals and Mac-feel workspace swipes.",
-  "kinds": ["service"],
-  "entryPoints": { "service": "Service.qml" }
+  "description": "Mac keys for Omarchy: ⌘ sends Ctrl and ⌃ sends Super at the keyboard layout, so apps get native shortcuts and Omarchy lives on ⌃. Option characters, Mac caret keys, Mac gestures, Mac-style Ghostty.",
+  "kinds": [
+    "service"
+  ],
+  "entryPoints": {
+    "service": "Service.qml"
+  }
 }

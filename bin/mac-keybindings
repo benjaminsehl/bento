@@ -30,8 +30,9 @@ fi
 to_mac_glyphs() {
   gawk -F '\t' -v OFS='\t' '
     BEGIN {
-      glyph["CTRL"] = "⌃"; glyph["CONTROL"] = "⌃"; glyph["ALT"] = "⌥"
-      glyph["SHIFT"] = "⇧"; glyph["SUPER"] = "⌘"
+      # omac's layout swaps the keys: ⌘ sends Ctrl, ⌃ sends Super, ⌥ is MOD5.
+      glyph["CTRL"] = "⌘"; glyph["CONTROL"] = "⌘"; glyph["ALT"] = "⌥"; glyph["MOD5"] = "⌥"
+      glyph["SHIFT"] = "⇧"; glyph["SUPER"] = "⌃"
       order = "⌃⌥⇧⌘"
 
       keys = "RETURN=↩ ENTER=↩ KP_ENTER=⌤ TAB=⇥ BACKSPACE=⌫ DELETE=⌦ ESCAPE=⎋ ESC=⎋ " \
