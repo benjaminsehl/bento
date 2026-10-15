@@ -67,6 +67,48 @@ local function rebind(keys, description, dispatcher, options)
   o.bind(keys, description, dispatcher, options)
 end
 
+-- Hidden (special) workspaces: the scratchpad, and "minimized" for ⌘M.
+-- Showing one hides whichever is open first; "down" hides what's open, and
+-- only opens the minimized windows when nothing is.
+local function open_special()
+  local ws = hl.get_active_special_workspace()
+  return ws and ws.name and (ws.name:gsub("^special:", "")) or nil
+end
+
+local function show_special(name)
+  local open = open_special()
+  if open == name then
+    return
+  end
+  if open then
+    hl.dispatch(hl.dsp.workspace.toggle_special(open))
+  end
+  hl.dispatch(hl.dsp.workspace.toggle_special(name))
+end
+
+local function hide_special()
+  local open = open_special()
+  if open then
+    hl.dispatch(hl.dsp.workspace.toggle_special(open))
+  end
+end
+
+local function toggle_scratchpad()
+  if open_special() == "scratchpad" then
+    hide_special()
+  else
+    show_special("scratchpad")
+  end
+end
+
+local function down_or_minimized()
+  if open_special() then
+    hide_special()
+  else
+    show_special("minimized")
+  end
+end
+
 local function exists(path)
   local f = io.open(path, "r")
   if f then
@@ -156,8 +198,8 @@ end
 -- --------------------------------------------------------- ⌃: desktops
 rebind("SUPER + LEFT", "Previous workspace", hl.dsp.focus({ workspace = "e-1" }))
 rebind("SUPER + RIGHT", "Next workspace", hl.dsp.focus({ workspace = "e+1" }))
-rebind("SUPER + UP", "Toggle scratchpad", hl.dsp.workspace.toggle_special("scratchpad"))
-rebind("SUPER + DOWN", "Show minimized windows", hl.dsp.workspace.toggle_special("minimized"))
+rebind("SUPER + UP", "Toggle scratchpad", toggle_scratchpad)
+rebind("SUPER + DOWN", "Hide scratchpad, or show minimized windows", down_or_minimized)
 
 -- ⌃Tab is the app's next tab, as on a Mac.
 rebind("SUPER + TAB", "Next tab", send({ "CTRL", "Tab" }, { "CTRL", "Tab" }))
@@ -307,7 +349,7 @@ rebind("SUPER + CTRL + K", "Keybindings", home .. "/.local/bin/mac-keybindings")
 local apple = { inclusive = true, list = { "apple-inc.-magic-keyboard-with-touch-id" } }
 local not_apple = { inclusive = false, list = { "apple-inc.-magic-keyboard-with-touch-id" } }
 
-o.bind("XF86LaunchA", "Mission Control (scratchpad for now)", hl.dsp.workspace.toggle_special("scratchpad"))
+o.bind("XF86LaunchA", "Mission Control (scratchpad for now)", toggle_scratchpad)
 o.bind("XF86Search", "Apps menu", "omarchy-menu toggle apps")
 hl.unbind("XF86AudioMicMute")
 o.bind("XF86AudioMicMute", "Mute microphone", "omarchy-audio-input-mute", { locked = true, device = not_apple })
@@ -330,9 +372,11 @@ hl.config({ input = { touchpad = { natural_scroll = true, tap_to_click = false }
 
 -- Four fingers as on a Mac set to four-finger Spaces.
 hl.gesture({ fingers = 4, direction = "horizontal", action = "workspace" })
-hl.gesture({ fingers = 4, direction = "up", action = function() hl.dispatch(hl.dsp.workspace.toggle_special("scratchpad")) end })
-hl.gesture({ fingers = 4, direction = "down", action = function() hl.dispatch(hl.dsp.workspace.toggle_special("minimized")) end })
-hl.gesture({ fingers = 3, direction = "up", action = function() hl.dispatch(hl.dsp.workspace.toggle_special("scratchpad")) end })
+-- Up shows, down hides; four down with nothing open shows minimized windows.
+hl.gesture({ fingers = 4, direction = "up", action = function() show_special("scratchpad") end })
+hl.gesture({ fingers = 4, direction = "down", action = down_or_minimized })
+hl.gesture({ fingers = 3, direction = "up", action = function() show_special("scratchpad") end })
+hl.gesture({ fingers = 3, direction = "down", action = hide_special })
 
 -- Show Desktop and Launchpad. Hyprland's names are the other way round from
 -- the gesture: a spread fires "pinchin", a pinch "pinchout".
