@@ -6,12 +6,13 @@ import Quickshell.Wayland
 import qs.Commons
 import qs.Ui
 
-// Exposé: every window at once.
+// Exposé: a zoomed-out view of everything.
 //
-// Pages run left to right in dot order, each a column with its windows
-// spread out so none overlap. Minimized and scratchpad windows aren't pages,
-// so they sit on a quieter shelf below. Click a window to go to it, a
-// column to go to that page, or an empty frame at either end for a new page.
+// Every page is a miniature of the monitor with its windows exactly where
+// Hyprland put them, in dot order. The scratchpad is a miniature too,
+// centred below. Minimized windows have no place on screen, so they sit in a
+// small shelf centred above. Click a window to go to it, a page to go there,
+// or an empty frame at either end for a new page.
 Item {
   id: root
 
@@ -31,20 +32,27 @@ Item {
     return screens.length ? screens[0] : null
   }
 
-  // Layout metrics, in overlay pixels.
-  readonly property real margin: Style.space(56)
-  readonly property real gap: Style.space(28)
-  readonly property real innerGap: Style.space(16)
-  readonly property real ghostWidth: Style.space(44)
-  readonly property real dotSize: Style.spaceReal(5)
-  readonly property real indicatorHeight: Style.space(28)
-  readonly property real captionHeight: Style.space(26)
+  // Monitor geometry in layout (logical) pixels.
+  readonly property real monScale: monitor && monitor.scale > 0 ? monitor.scale : 1
+  readonly property real monX: monitor ? monitor.x : 0
+  readonly property real monY: monitor ? monitor.y : 0
+  readonly property real monW: monitor ? monitor.width / monScale : 1920
+  readonly property real monH: monitor ? monitor.height / monScale : 1080
 
-  property var layout: ({ pages: [], ghosts: [], windows: [], captions: [], shelfY: -1 })
+  // Spacing, in overlay pixels.
+  readonly property real margin: Style.space(40)
+  readonly property real gap: Style.space(28)
+  readonly property real ghostWidth: Style.space(36)
+  readonly property real indicatorHeight: Style.space(24)
+  readonly property real captionHeight: Style.space(24)
+  readonly property real dotSize: Style.spaceReal(5)
+
+  property var layout: ({ pages: [], ghosts: [], windows: [], captions: [], scratch: null })
 
   function open(payloadJson) {
     Hyprland.refreshToplevels()
     Hyprland.refreshWorkspaces()
+    Hyprland.refreshMonitors()
     root.opened = true
     rebuild()
     root.selected = activeWindowIndex()
@@ -65,23 +73,14 @@ Item {
 
   function dispatch(expr) { Hyprland.dispatch(expr) }
   function q(s) { return JSON.stringify(String(s)) }
-
-  // ----------------------------------------------------------------- model
-
   function ipcOf(t) { return t.lastIpcObject || {} }
 
-  function readingOrder(list) {
-    return list.slice().sort(function(a, b) {
-      var A = ipcOf(a).at || [0, 0], B = ipcOf(b).at || [0, 0]
-      if (Math.abs(A[1] - B[1]) > 40) return A[1] - B[1]
-      return A[0] - B[0]
-    })
-  }
+  // ----------------------------------------------------------------- model
 
   function collect() {
     var mon = root.monitor
     var activeId = Hyprland.focusedWorkspace ? Hyprland.focusedWorkspace.id : -1
-    var pages = [], minimized = [], scratchpad = [], other = []
+    var pages = [], minimized = [], scratchpad = []
     var values = Hyprland.workspaces.values
     for (var i = 0; i < values.length; i++) {
       var ws = values[i]
@@ -89,130 +88,121 @@ Item {
       if (ws.id > 0) {
         if (mon && ws.monitor && ws.monitor.name !== mon.name) continue
         if (wins.length === 0 && ws.id !== activeId) continue
-        pages.push({ id: ws.id, focused: ws.id === activeId, windows: readingOrder(wins) })
-      } else if (ws.name === "special:minimized") {
-        minimized = minimized.concat(wins)
+        pages.push({ id: ws.id, focused: ws.id === activeId, windows: stacked(wins) })
       } else if (ws.name === "special:scratchpad") {
-        scratchpad = scratchpad.concat(wins)
+        scratchpad = scratchpad.concat(stacked(wins))
       } else if (ws.name.indexOf("special:") === 0) {
-        other = other.concat(wins)
+        minimized = minimized.concat(wins) // minimized, and any other hidden workspace
       }
     }
     pages.sort(function(a, b) { return a.id - b.id })
-    return { pages: pages, minimized: minimized, scratchpad: scratchpad, other: other }
+    return { pages: pages, minimized: minimized, scratchpad: scratchpad }
   }
 
-  // Fit windows into a box without overlap: try 1..4 columns and keep the
-  // arrangement that shows the most window area.
-  function pack(wins, bx, by, bw, bh, g, maxScale) {
-    var n = wins.length
-    if (n === 0) return []
-    var best = null
-    for (var cols = 1; cols <= Math.min(4, n); cols++) {
-      var rows = Math.ceil(n / cols)
-      var cw = (bw - g * (cols - 1)) / cols
-      var ch = (bh - g * (rows - 1)) / rows
-      if (cw <= 0 || ch <= 0) continue
-      var rects = [], area = 0
-      for (var i = 0; i < n; i++) {
-        var size = ipcOf(wins[i]).size || [1600, 1000]
-        var s = Math.min(cw / size[0], ch / size[1], maxScale)
-        var w = size[0] * s, h = size[1] * s
-        var r = Math.floor(i / cols), c = i % cols
-        var inRow = Math.min(cols, n - r * cols)
-        var rowOffset = (bw - (inRow * cw + (inRow - 1) * g)) / 2
-        rects.push({ x: bx + rowOffset + c * (cw + g) + (cw - w) / 2, y: by + r * (ch + g) + (ch - h) / 2, w: w, h: h })
-        area += w * h
-      }
-      if (!best || area > best.area) best = { rects: rects, area: area, rows: rows, ch: ch }
+  // Tiled first, then floating, then fullscreen: the order Hyprland draws them.
+  function stacked(list) {
+    function rank(t) {
+      var ipc = ipcOf(t)
+      return (ipc.fullscreen ? 2 : 0) + (ipc.floating ? 1 : 0)
     }
-    if (!best) return []
-    // Pull the rows together vertically so the group sits centred.
-    var used = 0
-    for (var j = 0; j < best.rects.length; j++) used = Math.max(used, best.rects[j].y + best.rects[j].h - by)
-    var minY = by
-    for (var k = 0; k < best.rects.length; k++) minY = Math.min(minY, best.rects[k].y)
-    var span = used - (minY - by)
-    var shift = (by + (bh - span) / 2) - minY
-    for (var m = 0; m < best.rects.length; m++) best.rects[m].y += shift
-    return best.rects
+    return list.slice().sort(function(a, b) { return rank(a) - rank(b) })
   }
 
-  // One row of thumbnails at a fixed height, shrunk to fit the width.
-  function shelfRow(wins, x, y, maxW, h, g) {
+  // A window's rectangle inside a miniature of the monitor at (x, y, w, h).
+  function placeIn(t, x, y, w, h) {
+    var ipc = ipcOf(t)
+    var at = ipc.at || [root.monX, root.monY]
+    var size = ipc.size || [root.monW, root.monH]
+    var f = w / root.monW
+    return { x: x + (at[0] - root.monX) * f, y: y + (at[1] - root.monY) * f, w: Math.max(2, size[0] * f), h: Math.max(2, size[1] * f) }
+  }
+
+  // One centred row of thumbnails at a fixed height, shrunk to fit the width.
+  function shelfRow(wins, cx, y, maxW, h, g) {
     var widths = [], total = 0
     for (var i = 0; i < wins.length; i++) {
       var size = ipcOf(wins[i]).size || [1600, 1000]
-      var w = h * size[0] / size[1]
+      var w = h * size[0] / Math.max(1, size[1])
       widths.push(w); total += w
     }
     total += g * Math.max(0, wins.length - 1)
     var s = total > maxW ? maxW / total : 1
-    var rects = [], cx = x
+    var rects = [], x = cx - total * s / 2
     for (var j = 0; j < wins.length; j++) {
       var ww = widths[j] * s, hh = h * s
-      rects.push({ x: cx, y: y + (h - hh) / 2, w: ww, h: hh })
-      cx += ww + g * s
+      rects.push({ x: x, y: y + (h - hh) / 2, w: ww, h: hh })
+      x += ww + g * s
     }
-    return { rects: rects, width: cx - x - g * s }
+    return rects
   }
 
   function rebuild() {
-    if (!root.opened || !panel.width) return
+    if (!root.opened || !panel.width || !panel.height) return
     var W = panel.width, H = panel.height
+    var aspect = root.monH / root.monW
     var data = collect()
-    var out = { pages: [], ghosts: [], windows: [], captions: [], shelfY: -1 }
+    var out = { pages: [], ghosts: [], windows: [], captions: [], scratch: null }
 
-    var shelfGroups = []
-    if (data.minimized.length) shelfGroups.push({ name: "Minimized", kind: "minimized", windows: data.minimized })
-    if (data.scratchpad.length) shelfGroups.push({ name: "Scratchpad", kind: "scratchpad", windows: data.scratchpad })
-    if (data.other.length) shelfGroups.push({ name: "Hidden", kind: "special", windows: data.other })
+    // Vertical budget: minimized shelf on top, scratchpad below, pages in between.
+    var shelfH = data.minimized.length ? Math.round(H * 0.085) : 0
+    var scratchH = data.scratchpad.length ? Math.round(H * 0.24) : 0
+    var top = root.margin + (shelfH ? root.captionHeight + shelfH + root.gap : 0)
+    var bottom = H - root.margin - (scratchH ? root.captionHeight + scratchH + root.gap : 0)
 
-    var shelfH = shelfGroups.length ? Math.round(H * 0.2) : 0
-    var top = root.margin, bottom = H - root.margin - (shelfH ? shelfH + root.gap : 0)
-
-    // Pages, with an empty frame at each end for a new page.
+    // Pages: as large as fits, in one centred row.
     var n = Math.max(1, data.pages.length)
-    var colW = (W - root.margin * 2 - root.ghostWidth * 2 - root.gap * (n + 1)) / n
-    var x = root.margin
-    out.ghosts.push({ side: "left", x: x, y: top + root.indicatorHeight, w: root.ghostWidth, h: bottom - top - root.indicatorHeight })
-    x += root.ghostWidth + root.gap
+    var availW = W - root.margin * 2 - (root.ghostWidth + root.gap) * 2 - root.gap * (n - 1)
+    var availH = bottom - top - root.indicatorHeight
+    var miniW = Math.min(availW / n, availH / aspect)
+    var miniH = miniW * aspect
+    var rowW = miniW * n + root.gap * (n - 1)
+    var x = (W - rowW) / 2
+    var y = top + root.indicatorHeight + (availH - miniH) / 2
+
+    out.ghosts.push({ side: "left", x: x - root.gap - root.ghostWidth, y: y, w: root.ghostWidth, h: miniH })
     for (var p = 0; p < data.pages.length; p++) {
       var page = data.pages[p]
-      var col = { id: page.id, focused: page.focused, x: x, y: top, w: colW, h: bottom - top, empty: page.windows.length === 0 }
-      out.pages.push(col)
-      var rects = pack(page.windows, x + root.innerGap, top + root.indicatorHeight + root.innerGap,
-                       colW - root.innerGap * 2, col.h - root.indicatorHeight - root.innerGap * 2, root.innerGap, 0.6)
-      for (var i = 0; i < rects.length; i++)
-        out.windows.push({ toplevel: page.windows[i], kind: "page", workspaceId: page.id, x: rects[i].x, y: rects[i].y, w: rects[i].w, h: rects[i].h })
-      x += colW + root.gap
+      out.pages.push({ id: page.id, focused: page.focused, x: x, y: y, w: miniW, h: miniH })
+      for (var i = 0; i < page.windows.length; i++) {
+        var r = placeIn(page.windows[i], x, y, miniW, miniH)
+        out.windows.push({ toplevel: page.windows[i], kind: "page", x: r.x, y: r.y, w: r.w, h: r.h, clipX: x, clipY: y, clipW: miniW, clipH: miniH })
+      }
+      x += miniW + root.gap
     }
-    out.ghosts.push({ side: "right", x: x, y: top + root.indicatorHeight, w: root.ghostWidth, h: bottom - top - root.indicatorHeight })
+    out.ghosts.push({ side: "right", x: x, y: y, w: root.ghostWidth, h: miniH })
 
-    // The shelf: groups side by side, each under a small caption.
+    // Minimized: a small shelf centred at the top.
     if (shelfH) {
-      var sy = H - root.margin - shelfH
-      out.shelfY = sy - root.gap / 2
-      var groupW = (W - root.margin * 2 - root.gap * (shelfGroups.length - 1)) / shelfGroups.length
-      var gx = root.margin
-      for (var g = 0; g < shelfGroups.length; g++) {
-        var grp = shelfGroups[g]
-        out.captions.push({ text: grp.name, x: gx, y: sy })
-        var row = shelfRow(grp.windows, gx, sy + root.captionHeight, groupW, shelfH - root.captionHeight, root.innerGap)
-        for (var r = 0; r < row.rects.length; r++)
-          out.windows.push({ toplevel: grp.windows[r], kind: grp.kind, workspaceId: -1, x: row.rects[r].x, y: row.rects[r].y, w: row.rects[r].w, h: row.rects[r].h })
-        gx += groupW + root.gap
+      var sy = root.margin
+      out.captions.push({ text: "Minimized", cx: W / 2, y: sy })
+      var rects = shelfRow(data.minimized, W / 2, sy + root.captionHeight, W - root.margin * 2, shelfH, Style.space(12))
+      for (var m = 0; m < rects.length; m++)
+        out.windows.push({ toplevel: data.minimized[m], kind: "minimized", x: rects[m].x, y: rects[m].y, w: rects[m].w, h: rects[m].h })
+    }
+
+    // Scratchpad: a miniature of the monitor centred at the bottom.
+    if (scratchH) {
+      var scW = scratchH / aspect
+      var sx = (W - scW) / 2
+      var scy = H - root.margin - scratchH
+      out.captions.push({ text: "Scratchpad", cx: W / 2, y: scy - root.captionHeight })
+      out.scratch = { x: sx, y: scy, w: scW, h: scratchH }
+      for (var s = 0; s < data.scratchpad.length; s++) {
+        var rr = placeIn(data.scratchpad[s], sx, scy, scW, scratchH)
+        out.windows.push({ toplevel: data.scratchpad[s], kind: "scratchpad", x: rr.x, y: rr.y, w: rr.w, h: rr.h, clipX: sx, clipY: scy, clipW: scW, clipH: scratchH })
       }
     }
+
     root.layout = out
     if (root.selected >= out.windows.length) root.selected = out.windows.length - 1
   }
 
   function activeWindowIndex() {
     var active = Hyprland.activeToplevel
-    for (var i = 0; i < root.layout.windows.length; i++)
-      if (active && String(root.layout.windows[i].toplevel.address) === String(active.address)) return i
-    return root.layout.windows.length ? 0 : -1
+    var list = root.layout.windows
+    for (var i = 0; i < list.length; i++)
+      if (active && String(list[i].toplevel.address) === String(active.address)) return i
+    return list.length ? 0 : -1
   }
 
   // Rebuild while open as windows come and go.
@@ -222,7 +212,7 @@ Item {
     enabled: root.opened
     function onRawEvent(event) {
       var n = event.name
-      if (n.indexOf("window") >= 0 || n.indexOf("workspace") >= 0 || n === "movewindowv2") {
+      if (n.indexOf("window") >= 0 || n.indexOf("workspace") >= 0) {
         Hyprland.refreshToplevels()
         rebuildSoon.restart()
       }
@@ -231,11 +221,15 @@ Item {
 
   // ----------------------------------------------------------------- actions
 
+  function addressOf(t) {
+    var raw = String(t.address)
+    return "address:" + (raw.indexOf("0x") === 0 ? raw : "0x" + raw)
+  }
+
   function activate(index) {
     var e = root.layout.windows[index]
     if (!e) return
-    var raw = String(e.toplevel.address)
-    var addr = "address:" + (raw.indexOf("0x") === 0 ? raw : "0x" + raw)
+    var addr = addressOf(e.toplevel)
     if (e.kind === "minimized") {
       var here = Hyprland.focusedWorkspace ? Hyprland.focusedWorkspace.id : 1
       dispatch("hl.dsp.window.move({ workspace = " + q(here) + ", window = " + q(addr) + " })")
@@ -249,11 +243,16 @@ Item {
     dismiss()
   }
 
+  function openScratchpad() {
+    dispatch("hl.dsp.workspace.toggle_special(\"scratchpad\")")
+    dismiss()
+  }
+
   function newPage(side) {
     var pages = root.layout.pages
     if (!pages.length) return dismiss()
     var id = side === "left" ? pages[0].id - 1 : pages[pages.length - 1].id + 1
-    if (id < 1) id = pages[0].id // no room on the left; pages.lua will make some
+    if (id < 1) id = pages[0].id // no room on the left; pages.lua makes some
     goToPage(id)
   }
 
@@ -271,8 +270,7 @@ Item {
       var ex = e.x + e.w / 2 - cx, ey = e.y + e.h / 2 - cy
       var along = ex * dx + ey * dy
       if (along <= 1) continue
-      var across = Math.abs(ex * dy) + Math.abs(ey * dx)
-      var score = along + across * 2
+      var score = along + (Math.abs(ex * dy) + Math.abs(ey * dx)) * 2
       if (score < bestScore) { bestScore = score; best = i }
     }
     if (best >= 0) root.selected = best
@@ -285,6 +283,16 @@ Item {
   }
 
   // ----------------------------------------------------------------- view
+
+  component Caption: Text {
+    color: Color.foreground
+    opacity: 0.5
+    font.family: Style.font.family
+    font.pixelSize: Style.font.body
+    horizontalAlignment: Text.AlignHCenter
+    verticalAlignment: Text.AlignVCenter
+    height: root.captionHeight
+  }
 
   PanelWindow {
     id: panel
@@ -304,11 +312,11 @@ Item {
       id: content
       anchors.fill: parent
       opacity: root.opened ? 1 : 0
-      scale: root.opened ? 1 : 1.02
+      scale: root.opened ? 1 : 1.03
       Behavior on opacity { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
-      Behavior on scale { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
+      Behavior on scale { NumberAnimation { duration: 240; easing.type: Easing.OutCubic } }
 
-      // The desktop itself, dimmed: one quiet surface.
+      // Behind everything: the desktop, blurred and dimmed.
       Image {
         id: wallpaper
         anchors.fill: parent
@@ -322,57 +330,104 @@ Item {
         anchors.fill: parent
         source: wallpaper
         blurEnabled: true
-        blur: 0.6
-        blurMax: 48
-        brightness: -0.12
+        blur: 0.8
+        blurMax: 64
+        brightness: -0.1
       }
-      Rectangle { anchors.fill: parent; color: Qt.rgba(0, 0, 0, 0.38) }
+      Rectangle { anchors.fill: parent; color: Qt.rgba(0, 0, 0, 0.5) }
 
       MouseArea { anchors.fill: parent; onClicked: root.dismiss() }
 
-      // Page columns: the dot marks the page, a faint surface marks the one you're on.
+      // Pages: miniatures of the monitor, marked by the same dot as the bar.
       Repeater {
         model: root.layout.pages
         Item {
+          id: mini
           required property var modelData
           x: modelData.x; y: modelData.y; width: modelData.w; height: modelData.h
 
           Rectangle {
             anchors.horizontalCenter: parent.horizontalCenter
-            y: (root.indicatorHeight - height) / 2
-            width: modelData.focused ? root.dotSize * 2.4 : root.dotSize
+            y: -root.indicatorHeight / 2 - height / 2
+            width: mini.modelData.focused ? root.dotSize * 2.4 : root.dotSize
             height: root.dotSize
             radius: height / 2
             color: Color.foreground
-            opacity: modelData.focused ? 1 : 0.5
+            opacity: mini.modelData.focused ? 1 : 0.5
           }
 
+          Item {
+            anchors.fill: parent
+            layer.enabled: true
+            layer.effect: MultiEffect {
+              maskEnabled: true
+              maskSource: miniMask
+              maskThresholdMin: 0.5
+              maskSpreadAtMin: 1
+            }
+            Image {
+              anchors.fill: parent
+              source: root.opened ? root.backgroundSource : ""
+              fillMode: Image.PreserveAspectCrop
+              asynchronous: true
+              sourceSize.width: 640
+            }
+            Rectangle { anchors.fill: parent; color: Qt.rgba(1, 1, 1, pageArea.containsMouse ? 0.06 : 0) }
+          }
           Rectangle {
-            id: surface
-            y: root.indicatorHeight
-            width: parent.width
-            height: parent.height - root.indicatorHeight
+            id: miniMask
+            anchors.fill: parent
             radius: Style.cornerRadius
-            color: Qt.rgba(1, 1, 1, modelData.focused ? 0.06 : (columnArea.containsMouse ? 0.04 : 0))
-            border.width: modelData.focused ? 1 : 0
-            border.color: Qt.rgba(1, 1, 1, 0.12)
-            Behavior on color { ColorAnimation { duration: 120 } }
+            visible: false
+            layer.enabled: true
           }
-
+          Rectangle {
+            anchors.fill: parent
+            anchors.margins: -2
+            radius: Style.cornerRadius + 2
+            color: "transparent"
+            border.width: mini.modelData.focused ? 2 : 1
+            border.color: mini.modelData.focused ? Qt.rgba(1, 1, 1, 0.55) : Qt.rgba(1, 1, 1, 0.1)
+          }
           MouseArea {
-            id: columnArea
-            anchors.fill: surface
+            id: pageArea
+            anchors.fill: parent
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
-            onClicked: root.goToPage(modelData.id)
+            onClicked: root.goToPage(mini.modelData.id)
           }
         }
       }
 
-      // Empty frames at each end: a new page there.
+      // The scratchpad: a miniature with no wallpaper, since it floats over a page.
+      Item {
+        visible: root.layout.scratch !== null
+        x: root.layout.scratch ? root.layout.scratch.x : 0
+        y: root.layout.scratch ? root.layout.scratch.y : 0
+        width: root.layout.scratch ? root.layout.scratch.w : 0
+        height: root.layout.scratch ? root.layout.scratch.h : 0
+
+        Rectangle {
+          anchors.fill: parent
+          radius: Style.cornerRadius
+          color: Qt.rgba(1, 1, 1, scratchArea.containsMouse ? 0.08 : 0.04)
+          border.width: 1
+          border.color: Qt.rgba(1, 1, 1, 0.12)
+        }
+        MouseArea {
+          id: scratchArea
+          anchors.fill: parent
+          hoverEnabled: true
+          cursorShape: Qt.PointingHandCursor
+          onClicked: root.openScratchpad()
+        }
+      }
+
+      // Empty frames at each end of the pages: a new page there.
       Repeater {
         model: root.layout.ghosts
         Item {
+          id: ghost
           required property var modelData
           x: modelData.x; y: modelData.y; width: modelData.w; height: modelData.h
 
@@ -381,16 +436,16 @@ Item {
             radius: Style.cornerRadius
             color: "transparent"
             border.width: 1
-            border.color: Qt.rgba(1, 1, 1, ghostArea.containsMouse ? 0.35 : 0.08)
+            border.color: Qt.rgba(1, 1, 1, ghostArea.containsMouse ? 0.4 : 0.1)
             Behavior on border.color { ColorAnimation { duration: 120 } }
           }
           Text {
             anchors.centerIn: parent
             text: "+"
             color: Color.foreground
-            opacity: ghostArea.containsMouse ? 0.8 : 0.2
+            opacity: ghostArea.containsMouse ? 0.8 : 0.25
             font.family: Style.font.family
-            font.pixelSize: Style.space(20)
+            font.pixelSize: Style.space(18)
             Behavior on opacity { NumberAnimation { duration: 120 } }
           }
           MouseArea {
@@ -398,34 +453,23 @@ Item {
             anchors.fill: parent
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
-            onClicked: root.newPage(modelData.side)
+            onClicked: root.newPage(ghost.modelData.side)
           }
         }
       }
 
-      // The shelf: a hairline and small captions, nothing more.
-      Rectangle {
-        visible: root.layout.shelfY >= 0
-        x: root.margin
-        y: root.layout.shelfY
-        width: parent.width - root.margin * 2
-        height: 1
-        color: Qt.rgba(1, 1, 1, 0.1)
-      }
       Repeater {
         model: root.layout.captions
-        Text {
+        Caption {
           required property var modelData
-          x: modelData.x; y: modelData.y
           text: modelData.text
-          color: Color.foreground
-          opacity: 0.45
-          font.family: Style.font.family
-          font.pixelSize: Style.font.body
+          x: modelData.cx - width / 2
+          y: modelData.y
+          width: Style.space(200)
         }
       }
 
-      // Windows.
+      // Windows, each drawn live where it sits.
       Repeater {
         model: root.layout.windows
         Item {
@@ -433,92 +477,103 @@ Item {
           required property var modelData
           required property int index
           readonly property bool lit: root.selected === index
-          x: modelData.x; y: modelData.y; width: modelData.w; height: modelData.h
-
-          Rectangle {
-            id: frame
-            anchors.fill: parent
-            anchors.margins: -3
-            radius: 6
-            color: "transparent"
-            border.width: 2
-            border.color: Color.accent
-            opacity: tile.lit ? 1 : 0
-            Behavior on opacity { NumberAnimation { duration: 100 } }
-          }
+          readonly property bool clipped: modelData.clipW !== undefined
+          // Keep page windows inside their miniature (gaps, off-screen floats).
+          x: clipped ? modelData.clipX : modelData.x
+          y: clipped ? modelData.clipY : modelData.y
+          width: clipped ? modelData.clipW : modelData.w
+          height: clipped ? modelData.clipH : modelData.h
+          clip: clipped
+          z: lit ? 1 : 0
 
           Item {
-            id: shot
-            anchors.fill: parent
-            layer.enabled: true
-            layer.effect: MultiEffect {
-              maskEnabled: true
-              maskSource: shotMask
-              maskThresholdMin: 0.5
-              maskSpreadAtMin: 1
+            id: win
+            x: tile.modelData.x - tile.x
+            y: tile.modelData.y - tile.y
+            width: tile.modelData.w
+            height: tile.modelData.h
+
+            Item {
+              anchors.fill: parent
+              layer.enabled: true
+              layer.effect: MultiEffect {
+                maskEnabled: true
+                maskSource: shotMask
+                maskThresholdMin: 0.5
+                maskSpreadAtMin: 1
+              }
+              Rectangle {
+                anchors.fill: parent
+                visible: !capture.hasContent
+                color: Qt.rgba(0.15, 0.15, 0.15, 0.9)
+                Image {
+                  anchors.centerIn: parent
+                  width: Math.min(parent.width, parent.height) * 0.4
+                  height: width
+                  source: root.opened ? root.appIcon(tile.modelData.toplevel) : ""
+                  sourceSize.width: 128
+                  sourceSize.height: 128
+                }
+              }
+              ScreencopyView {
+                id: capture
+                anchors.fill: parent
+                captureSource: root.opened ? tile.modelData.toplevel.wayland : null
+                live: root.opened
+                paintCursor: false
+                constraintSize: Qt.size(win.width * 2, win.height * 2)
+              }
+            }
+            Rectangle {
+              id: shotMask
+              anchors.fill: parent
+              radius: 3
+              visible: false
+              layer.enabled: true
             }
 
             Rectangle {
               anchors.fill: parent
-              visible: !capture.hasContent
-              color: Qt.rgba(1, 1, 1, 0.08)
-              Image {
-                anchors.centerIn: parent
-                width: Math.min(parent.width, parent.height) * 0.35
-                height: width
-                source: root.opened ? root.appIcon(tile.modelData.toplevel) : ""
-                sourceSize.width: 128
-                sourceSize.height: 128
-              }
+              anchors.margins: tile.clipped ? 0 : -3
+              radius: 4
+              color: "transparent"
+              border.width: 2
+              border.color: Color.accent
+              opacity: tile.lit ? 1 : 0
+              Behavior on opacity { NumberAnimation { duration: 100 } }
             }
 
-            ScreencopyView {
-              id: capture
+            MouseArea {
               anchors.fill: parent
-              captureSource: root.opened ? tile.modelData.toplevel.wayland : null
-              live: root.opened
-              paintCursor: false
-              constraintSize: Qt.size(tile.width * 2, tile.height * 2)
+              hoverEnabled: true
+              cursorShape: Qt.PointingHandCursor
+              onEntered: root.selected = tile.index
+              onClicked: root.activate(tile.index)
             }
           }
+        }
+      }
 
-          Rectangle {
-            id: shotMask
-            anchors.fill: parent
-            radius: 4
-            visible: false
-            layer.enabled: true
-          }
-
-          // Title on hover or selection only.
-          Rectangle {
-            visible: tile.lit
-            anchors.horizontalCenter: parent.horizontalCenter
-            anchors.bottom: parent.bottom
-            anchors.bottomMargin: Style.space(8)
-            width: Math.min(title.implicitWidth + Style.space(20), parent.width - Style.space(12))
-            height: title.implicitHeight + Style.space(10)
-            radius: height / 2
-            color: Qt.rgba(0, 0, 0, 0.7)
-            Text {
-              id: title
-              anchors.centerIn: parent
-              width: Math.min(implicitWidth, parent.width - Style.space(20))
-              text: tile.modelData.toplevel.title || ""
-              elide: Text.ElideRight
-              color: "white"
-              font.family: Style.font.family
-              font.pixelSize: Style.font.body
-            }
-          }
-
-          MouseArea {
-            anchors.fill: parent
-            hoverEnabled: true
-            cursorShape: Qt.PointingHandCursor
-            onEntered: root.selected = tile.index
-            onClicked: root.activate(tile.index)
-          }
+      // The selected window's title, just below it: the only text that moves.
+      Rectangle {
+        readonly property var sel: root.selected >= 0 ? root.layout.windows[root.selected] : null
+        visible: sel !== null && sel !== undefined && titleText.text !== ""
+        x: sel ? Math.max(Style.space(8), Math.min(content.width - width - Style.space(8), sel.x + sel.w / 2 - width / 2)) : 0
+        y: sel ? Math.min(content.height - height - Style.space(8), sel.y + sel.h + Style.space(8)) : 0
+        z: 2
+        width: Math.min(titleText.implicitWidth + Style.space(20), Style.space(420))
+        height: titleText.implicitHeight + Style.space(10)
+        radius: height / 2
+        color: Qt.rgba(0, 0, 0, 0.75)
+        Text {
+          id: titleText
+          anchors.centerIn: parent
+          width: Math.min(implicitWidth, parent.width - Style.space(20))
+          text: parent.sel ? (parent.sel.toplevel.title || "") : ""
+          elide: Text.ElideRight
+          color: "white"
+          font.family: Style.font.family
+          font.pixelSize: Style.font.body
         }
       }
 

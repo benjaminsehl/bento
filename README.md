@@ -20,14 +20,17 @@ An [Omarchy](https://omarchy.org) bar widget that shows workspaces as page dots 
 
 ## Exposé
 
-Pinch five fingers together to see every window at once. Spread them, press `Esc` or click the background to put it away.
+Pinch three fingers together to zoom out to everything. Spread them, press `Esc` or click the background to zoom back in.
 
-- Pages run left to right in dot order. Each is a column with its windows spread out so none overlap.
-  The column you're on has a faint surface.
-- Minimized and scratchpad windows aren't pages, so they sit on a shelf below a hairline.
+- Every page is a miniature of your monitor, in dot order, with its windows exactly where Hyprland put them.
+  The page you're on is outlined.
+- The scratchpad is a miniature too, centred at the bottom.
+- Minimized windows have no place on screen, so they sit in a small shelf centred at the top.
 - Click a window to go to it. A minimized window comes back onto the page you're on.
-- Click a column to go to that page. Click the empty frame at either end to start a new page there.
-- Arrow keys move the selection and `Enter` picks it. Window titles only show for the selection.
+- Click a page to go there, or the scratchpad to open it. The empty frame at either end starts a new page.
+- Arrow keys move the selection and `Enter` picks it. Only the selected window shows its title.
+
+libinput only recognises gestures of up to four fingers, so a five-finger pinch can't work.
 
 The overlay is part of this plugin. `install.sh` sets up the gesture, which you can also trigger yourself:
 

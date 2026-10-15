@@ -174,11 +174,12 @@ hl.on("window.close", function(w)
 end)
 
 -- ------------------------------------------------------------- exposé
--- Pinch five fingers together to see every window; spread them to put it away.
--- (Hyprland's names are the other way round: a pinch fires "pinchout".)
+-- Pinch three fingers together to see every window; spread them to put it away.
+-- (A pinch fires "pinchout": the gesture's scale goes below 1.) libinput only
+-- recognises gestures of up to four fingers, and omac already uses four.
 local EXPOSE = "omarchy-shell shell toggle io.github.benjaminsehl.pages '{}'"
-hl.gesture({ fingers = 5, direction = "pinchout", action = function() hl.exec_cmd(EXPOSE) end })
-hl.gesture({ fingers = 5, direction = "pinchin", action = function()
+hl.gesture({ fingers = 3, direction = "pinchout", action = function() hl.exec_cmd(EXPOSE) end })
+hl.gesture({ fingers = 3, direction = "pinchin", action = function()
   hl.exec_cmd("omarchy-shell shell hide io.github.benjaminsehl.pages")
 end })
 
