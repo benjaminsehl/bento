@@ -206,8 +206,10 @@ Item {
         clip: false
         boundsBehavior: Flickable.StopAtBounds
         // Few cards sit in the middle; many scroll.
-        leftMargin: Math.max(Style.gapsOut * 2, (width - contentWidth) / 2)
-        rightMargin: Style.gapsOut * 2
+        // Always some room at the screen edges, even scrolled all the way.
+        readonly property int edge: Math.round(width * 0.05)
+        leftMargin: Math.max(edge, (width - contentWidth) / 2)
+        rightMargin: edge
 
         // Scrolling is handled by stripScroll below.
         interactive: false
@@ -311,7 +313,7 @@ Item {
         id: stripScroll
         anchors.fill: strip
         acceptedButtons: Qt.NoButton
-        readonly property real speed: 2.5
+        readonly property real speed: 5
 
         onWheel: function(wheel) {
           var px = wheel.pixelDelta

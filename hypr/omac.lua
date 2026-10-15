@@ -70,6 +70,14 @@ end
 -- Hidden (special) workspaces: the scratchpad, and "minimized" for ⌘M.
 -- Showing one hides whichever is open first; "down" hides what's open, and
 -- only opens the minimized windows when nothing is.
+local sync_swipe -- set under Trackpads; locks sideways swipes while open
+
+local function after_special_change()
+  if sync_swipe then
+    hl.timer(function() sync_swipe() end, { timeout = 60, type = "oneshot" })
+  end
+end
+
 local function open_special()
   local ws = hl.get_active_special_workspace()
   return ws and ws.name and (ws.name:gsub("^special:", "")) or nil
@@ -84,6 +92,7 @@ local function show_special(name)
     hl.dispatch(hl.dsp.workspace.toggle_special(open))
   end
   hl.dispatch(hl.dsp.workspace.toggle_special(name))
+  after_special_change()
 end
 
 local function hide_special()
@@ -91,6 +100,7 @@ local function hide_special()
   if open then
     hl.dispatch(hl.dsp.workspace.toggle_special(open))
   end
+  after_special_change()
 end
 
 local function toggle_scratchpad()
@@ -235,7 +245,7 @@ rebind("SUPER + MOD5 + RETURN", "Full width", hl.dsp.window.fullscreen({ mode = 
 rebind("SUPER + MOD5 + T", "Toggle window floating/tiling", hl.dsp.window.float({ action = "toggle" }))
 rebind("SUPER + MOD5 + O", "Pop window out (float & pin)", "omarchy-hyprland-window-pop")
 rebind("SUPER + MOD5 + L", "Toggle workspace layout", "omarchy-hyprland-workspace-layout-toggle")
-rebind("SUPER + MOD5 + S", "Toggle scratchpad", hl.dsp.workspace.toggle_special("scratchpad"))
+rebind("SUPER + MOD5 + S", "Toggle scratchpad", toggle_scratchpad)
 rebind("SUPER + MOD5 + SHIFT + S", "Move window to scratchpad", hl.dsp.window.move({ workspace = "special:scratchpad", follow = false }))
 rebind("SUPER + CTRL + MOD5 + F", "Tiled full screen", "omarchy-hyprland-window-tiled-fullscreen-toggle")
 
@@ -451,12 +461,34 @@ hl.gesture({ fingers = 4, direction = "pinchout", action = function()
 end })
 
 -- A flick switches; a slow drag peeks and snaps back unless past halfway.
-hl.config({
-  gestures = {
-    workspace_swipe_min_speed_to_force = 10,
-    workspace_swipe_cancel_ratio = 0.5,
-  },
-})
+local swipe = {
+  workspace_swipe_distance = 300,
+  workspace_swipe_min_speed_to_force = 10,
+  workspace_swipe_cancel_ratio = 0.5,
+}
+
+-- While the scratchpad (or any hidden workspace) is open, sideways swipes
+-- don't change workspace. Hyprland can't switch a gesture off, so make the
+-- swipe so long and so hard to commit that it never does, and put it back
+-- when the hidden workspace closes.
+local locked_swipe = {
+  workspace_swipe_distance = 1000000,
+  workspace_swipe_min_speed_to_force = 1000000,
+  workspace_swipe_cancel_ratio = 1,
+}
+
+local swipe_locked = nil
+sync_swipe = function()
+  local lock = open_special() ~= nil
+  if lock ~= swipe_locked then
+    swipe_locked = lock
+    hl.config({ gestures = lock and locked_swipe or swipe })
+  end
+end
+sync_swipe()
+for _, event in ipairs({ "workspace.special_active", "workspace.active", "monitor.focused" }) do
+  hl.on(event, function() sync_swipe() end)
+end
 
 -- Omarchy turns workspace animations off; slide home in 180 ms instead.
 hl.curve("easeOutCubic", { type = "bezier", points = { { 0.33, 1 }, { 0.68, 1 } } })
