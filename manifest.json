@@ -5,14 +5,14 @@
   "version": "1.0.0",
   "author": "Benjamin Sehl",
   "license": "MIT",
-  "description": "Workspaces as page dots, with an Expos\u00e9 of every window",
+  "description": "Workspaces as page dots, with an Expos\u00e9 of every window and a drawer for minimized ones",
   "kinds": [
     "bar-widget",
     "overlay"
   ],
   "entryPoints": {
     "barWidget": "BarWidget.qml",
-    "overlay": "Expose.qml"
+    "overlay": "Overlay.qml"
   },
   "barWidget": {
     "displayName": "Pages",

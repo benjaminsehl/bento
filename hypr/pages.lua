@@ -150,14 +150,10 @@ for _, event in ipairs({
   hl.on(event, queue)
 end
 
--- ------------------------------------------------------------- closing
--- Close the last window on the page you're on and you slide to the next page
--- on the right. On the rightmost page you stay on the empty screen.
-hl.on("window.close", function(w)
-  local ws = w and w.workspace
-  if not ws or ws.special or ws.id <= 0 then return end
-  local id = ws.id
-  local monitor = ws.monitor and ws.monitor.name
+-- ------------------------------------------------------------- emptied pages
+-- Close or minimize the last window on the page you're on and you slide to
+-- the next page on the right. On the rightmost page you stay on the empty screen.
+local function slide_on_if_empty(id, monitor)
   hl.timer(function()
     local active = hl.get_active_workspace()
     if not active or active.special or active.id ~= id or active.windows > 0 then return end
@@ -171,17 +167,136 @@ hl.on("window.close", function(w)
     end
     if next_id then hl.dispatch(hl.dsp.focus({ workspace = tostring(next_id) })) end
   end, { timeout = 30, type = "oneshot" })
+end
+
+hl.on("window.close", function(w)
+  local ws = w and w.workspace
+  if not ws or ws.special or ws.id <= 0 then return end
+  slide_on_if_empty(ws.id, ws.monitor and ws.monitor.name)
 end)
 
--- ------------------------------------------------------------- exposé
--- Pinch three fingers together to see every window; spread them to put it away.
--- (A pinch fires "pinchout": the gesture's scale goes below 1.) libinput only
--- recognises gestures of up to four fingers, and omac already uses four.
-local EXPOSE = "omarchy-shell shell toggle io.github.benjaminsehl.pages '{}'"
-hl.gesture({ fingers = 3, direction = "pinchout", action = function() hl.exec_cmd(EXPOSE) end })
-hl.gesture({ fingers = 3, direction = "pinchin", action = function()
-  hl.exec_cmd("omarchy-shell shell hide io.github.benjaminsehl.pages")
+-- ------------------------------------------------------------- hidden windows
+-- Minimized windows live on the hidden "special:minimized" workspace, the
+-- scratchpad on "special:scratchpad". Overlay.qml shows them: the drawer
+-- (minimized only) and Exposé (everything). It sets _G.pages_view to the
+-- view that's open, so gestures can close what they opened.
+local PLUGIN = "io.github.benjaminsehl.pages"
+local toggles = (os.getenv("XDG_STATE_HOME") or (os.getenv("HOME") .. "/.local/state")) .. "/omarchy/toggles/hypr"
+local function exists(path)
+  local f = io.open(path, "r")
+  if f then f:close() end
+  return f ~= nil
+end
+-- omac makes ⌘ send Ctrl and ⌃ send Super; with it, Pages uses Mac keys.
+local OMAC = exists(toggles .. "/omac.lua")
+
+local function view() return _G.pages_view end
+
+local function show(v)
+  _G.pages_view = v
+  hl.exec_cmd("omarchy-shell shell summon " .. PLUGIN .. " '{\"view\":\"" .. v .. "\"}'")
+end
+
+local function hide_overlay()
+  _G.pages_view = nil
+  hl.exec_cmd("omarchy-shell shell hide " .. PLUGIN)
+end
+
+local function open_special()
+  local ws = hl.get_active_special_workspace()
+  return ws and ws.name and (ws.name:gsub("^special:", "")) or nil
+end
+
+local function show_special(name)
+  local open = open_special()
+  if open == name then return end
+  if open then hl.dispatch(hl.dsp.workspace.toggle_special(open)) end
+  hl.dispatch(hl.dsp.workspace.toggle_special(name))
+end
+
+local function hide_special()
+  local open = open_special()
+  if open then hl.dispatch(hl.dsp.workspace.toggle_special(open)) end
+end
+
+local function minimized_count()
+  local n = 0
+  for _, w in ipairs(hl.get_windows()) do
+    if w.workspace and w.workspace.name == "special:minimized" then n = n + 1 end
+  end
+  return n
+end
+
+local function minimize()
+  local w = hl.get_active_window()
+  if not w or not w.workspace or w.workspace.special then return end
+  local id, monitor = w.workspace.id, w.workspace.monitor and w.workspace.monitor.name
+  hl.dispatch(hl.dsp.window.move({ workspace = "special:minimized", follow = false }))
+  slide_on_if_empty(id, monitor)
+end
+
+local function toggle_expose()
+  if view() == "expose" then hide_overlay() else show("expose") end
+end
+
+local function toggle_drawer()
+  if view() == "drawer" then hide_overlay()
+  elseif minimized_count() > 0 then show("drawer") end
+end
+
+-- Down: put away what's open, or open the drawer when something is minimized.
+local function down()
+  if view() == "expose" then hide_overlay()
+  elseif view() == "drawer" then return
+  elseif open_special() then hide_special()
+  elseif minimized_count() > 0 then show("drawer") end
+end
+
+-- Up: close the drawer, or show the scratchpad.
+local function up()
+  if view() == "drawer" then hide_overlay()
+  elseif view() == "expose" then return
+  else show_special("scratchpad") end
+end
+
+-- Show desktop: the empty page left of the first one. Again to come back.
+local desktop_from = nil
+local function show_desktop()
+  if desktop_from then
+    hl.dispatch(hl.dsp.focus({ workspace = desktop_from }))
+    desktop_from = nil
+    return
+  end
+  local ws = hl.get_active_workspace()
+  local mon = hl.get_active_monitor and hl.get_active_monitor() or (ws and ws.monitor)
+  local edge = mon and edges[mon.name]
+  if not ws or ws.windows == 0 then return end -- already on an empty page
+  desktop_from = tostring(ws.id)
+  local ids = pages()
+  hl.dispatch(hl.dsp.focus({ workspace = tostring(edge and edge.id or ((ids[#ids] or 0) + 1)) }))
+end
+hl.on("workspace.active", function()
+  -- Going anywhere else by hand forgets the way back.
+  local ws = hl.get_active_workspace()
+  if desktop_from and ws and ws.windows > 0 and tostring(ws.id) ~= desktop_from then desktop_from = nil end
+end)
+
+-- Pinch four fingers together for Exposé; spread them to show the desktop.
+-- A pinch fires "pinchout" (the gesture's scale goes below 1). libinput
+-- recognises gestures of up to four fingers, so five can't work.
+hl.gesture({ fingers = 4, direction = "pinchout", action = function()
+  if desktop_from then show_desktop() else toggle_expose() end
 end })
+hl.gesture({ fingers = 4, direction = "pinchin", action = function()
+  if view() then hide_overlay() else show_desktop() end
+end })
+
+-- Three or four fingers down for the drawer, up for the scratchpad. omac
+-- leaves these gestures to Pages when Pages is installed.
+for _, fingers in ipairs({ 3, 4 }) do
+  hl.gesture({ fingers = fingers, direction = "down", action = down })
+  hl.gesture({ fingers = fingers, direction = "up", action = up })
+end
 
 -- New sessions start at workspace 1001, leaving room on the left.
 hl.on("hyprland.start", function()
@@ -194,6 +309,17 @@ queue()
 local function rebind(keys, description, action)
   hl.unbind(keys)
   o.bind(keys, description, action)
+end
+
+-- ⌘M minimizes. With omac, ⌃↑ and the Mission Control key open Exposé and
+-- ⌃↓ the drawer, as on a Mac. Without omac, ⌘M is SUPER + M.
+if OMAC then
+  rebind("CTRL + M", "Minimize window", minimize)
+  rebind("SUPER + UP", "Exposé", toggle_expose)
+  rebind("SUPER + DOWN", "Minimized windows", toggle_drawer)
+  rebind("XF86LaunchA", "Exposé", toggle_expose)
+else
+  rebind("SUPER + M", "Minimize window", minimize)
 end
 
 for n = 1, 10 do
