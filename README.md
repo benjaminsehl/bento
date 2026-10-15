@@ -22,7 +22,7 @@ An [Omarchy](https://omarchy.org) bar widget that shows workspaces as page dots 
 omarchy plugin add https://github.com/benjaminsehl/omarchy-pages.git --enable
 ```
 
-Then make the number keys follow the dots. This replaces Omarchy's `SUPER + 1…0` workspace bindings:
+Then make the number keys follow the dots and turn on the left-edge page. This replaces Omarchy's `SUPER + 1…0` workspace bindings:
 
 ```bash
 ~/.config/omarchy/plugins/io.github.benjaminsehl.pages/install.sh
@@ -41,8 +41,16 @@ Turn on Hyprland's workspace swipe, for example in `~/.config/hypr/input.lua`:
 hl.gesture({ fingers = 3, direction = "horizontal", action = "workspace" })
 ```
 
-Swiping past the last page opens an empty desktop, which becomes a new page once you open a window there.
-This relies on `gestures:workspace_swipe_create_new`, which is on by default.
+- **Swipe past the last dot** to get an empty desktop at the end. Hyprland does this itself through
+  `gestures:workspace_swipe_create_new`, which is on by default.
+- **Swipe past the first dot** to get an empty desktop that becomes dot #1. `install.sh` sets this up.
+  Hyprland can't create workspaces off the left end, so `hypr/pages.lua` keeps one empty, persistent
+  workspace just left of the first page. The bar hides it until you're on it. Open a window there and
+  it becomes a real page, and a new empty one is placed to its left.
+
+Workspace ids can't go below 1, so new sessions start at workspace 1001 to leave room on the left.
+If a monitor still runs out of room, its windows move up 1000 ids once. The ids never show anywhere,
+since the dots and `SUPER + N` only count positions.
 
 ## Tweaks
 
