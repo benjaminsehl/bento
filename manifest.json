@@ -7,9 +7,11 @@
   "license": "MIT",
   "description": "Mac keys for Omarchy: ⌘ sends Ctrl and ⌃ sends Super at the keyboard layout, so apps get native shortcuts and Omarchy lives on ⌃. Option characters, Mac caret keys, Mac gestures, Mac-style Ghostty.",
   "kinds": [
-    "service"
+    "service",
+    "overlay"
   ],
   "entryPoints": {
-    "service": "Service.qml"
+    "service": "Service.qml",
+    "overlay": "drawer/Drawer.qml"
   }
 }

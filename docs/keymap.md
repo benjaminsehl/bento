@@ -120,7 +120,7 @@ Changed, to match macOS:
 |---|---|---|
 | ⌃← / ⌃→ | Previous / next workspace (macOS Spaces) | focus window → ⌃⌥← → |
 | ⌃↑ | Overview (Mission Control) once the overview plugin lands; scratchpad until then | focus window up → ⌃⌥↑ |
-| ⌃↓ | Show / hide minimized windows (App Exposé) | focus window down → ⌃⌥↓ |
+| ⌃↓ | Minimized-windows drawer (App Exposé) | focus window down → ⌃⌥↓ |
 | ⌃Tab / ⌃⇧Tab | Next / previous tab in the app | next / previous workspace (⌃→ ⌃← now) |
 
 ### ⌃ + letter
@@ -268,7 +268,7 @@ Both trackpads. Finger counts as on a Mac set to four-finger Spaces.
 | Three fingers up | Show / hide the scratchpad, following your fingers | — |
 | Three or four fingers sideways | Switch workspace, following your fingers | Swipe between Spaces |
 | Four fingers up | Overview (overview plugin phase; scratchpad until then) | Mission Control |
-| Four fingers down | Show / hide minimized windows | App Exposé |
+| Four fingers down | Minimized-windows drawer, dropping from the top (only when something is minimized); four fingers up closes it | App Exposé |
 | Pinch thumb + three fingers | App launcher; when the desktop is showing, bring the windows back | Launchpad |
 | Spread thumb + three fingers | Show desktop (empty workspace); again to come back | Show Desktop |
 
@@ -312,3 +312,19 @@ Any other Omarchy action losing its key is a checker failure.
 - **Overview (Mission Control)**: a Hyprland overview plugin on four fingers up,
   ⌃↑ and the Magic Keyboard's F3. Its own phase after the key map works.
 - VS Code integrated terminal keys.
+
+## Minimized-windows drawer
+
+⌘M sends a window to the hidden `special:minimized` workspace. The drawer
+(`drawer/Drawer.qml`, an Omarchy shell overlay) shows those windows as live
+thumbnails on a scrollable strip, like the iPad app switcher:
+
+| Action | Does |
+|---|---|
+| Click a card, or ↩ | Restore that window to the current workspace |
+| Drag a card up, middle-click, or ⌫ | Close that window |
+| ← → | Choose a card |
+| Esc, click outside, four fingers up | Close the drawer |
+
+It opens after the gesture rather than following the fingers. If that feels
+wrong, the next step is a Hyprland plugin that tracks the swipe.

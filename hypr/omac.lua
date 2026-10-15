@@ -111,13 +111,49 @@ local function minimized_count()
   return n
 end
 
--- With nothing minimized there's nothing to show, so do nothing rather than
--- dim the screen over an empty workspace.
+-- The minimized windows show in omac's drawer (drawer/Drawer.qml), an Omarchy
+-- shell overlay. It sets _G.omac_drawer_open itself as it opens and closes.
+local DRAWER = "io.github.benjaminsehl.omac"
+
+local function drawer_open()
+  return _G.omac_drawer_open == true
+end
+
+local function open_drawer()
+  hl.exec_cmd("omarchy-shell shell summon " .. DRAWER .. " '{}'")
+end
+
+local function close_drawer()
+  _G.omac_drawer_open = false
+  hl.exec_cmd("omarchy-shell shell hide " .. DRAWER)
+end
+
+-- Down: hide what's open, or open the drawer. With nothing minimized there's
+-- nothing to show, so do nothing.
 local function down_or_minimized()
-  if open_special() then
+  if drawer_open() then
+    return
+  elseif open_special() then
     hide_special()
   elseif minimized_count() > 0 then
-    show_special("minimized")
+    open_drawer()
+  end
+end
+
+-- Up: close the drawer if it's open, otherwise show the scratchpad.
+local function up_or_scratchpad()
+  if drawer_open() then
+    close_drawer()
+  else
+    show_special("scratchpad")
+  end
+end
+
+local function toggle_drawer()
+  if drawer_open() then
+    close_drawer()
+  else
+    down_or_minimized()
   end
 end
 
@@ -211,7 +247,7 @@ end
 rebind("SUPER + LEFT", "Previous workspace", hl.dsp.focus({ workspace = "e-1" }))
 rebind("SUPER + RIGHT", "Next workspace", hl.dsp.focus({ workspace = "e+1" }))
 rebind("SUPER + UP", "Toggle scratchpad", toggle_scratchpad)
-rebind("SUPER + DOWN", "Hide scratchpad, or show minimized windows", down_or_minimized)
+rebind("SUPER + DOWN", "Minimized windows", toggle_drawer)
 
 -- ⌃Tab is the app's next tab, as on a Mac.
 rebind("SUPER + TAB", "Next tab", send({ "CTRL", "Tab" }, { "CTRL", "Tab" }))
@@ -385,10 +421,11 @@ hl.config({ input = { touchpad = { natural_scroll = true, tap_to_click = false }
 -- Workspaces follow three or four fingers sideways.
 hl.gesture({ fingers = 4, direction = "horizontal", action = "workspace" })
 hl.gesture({ fingers = 3, direction = "horizontal", action = "workspace" })
--- Up shows, down hides; four down with nothing open shows minimized windows.
-hl.gesture({ fingers = 4, direction = "up", action = function() show_special("scratchpad") end })
+-- Up shows the scratchpad (or closes the drawer), down hides; four down with
+-- nothing open opens the minimized-windows drawer.
+hl.gesture({ fingers = 4, direction = "up", action = up_or_scratchpad })
 hl.gesture({ fingers = 4, direction = "down", action = down_or_minimized })
-hl.gesture({ fingers = 3, direction = "up", action = function() show_special("scratchpad") end })
+hl.gesture({ fingers = 3, direction = "up", action = up_or_scratchpad })
 hl.gesture({ fingers = 3, direction = "down", action = hide_special })
 
 -- Show Desktop and Launchpad. Hyprland's names are the other way round from

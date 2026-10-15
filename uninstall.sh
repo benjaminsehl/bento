@@ -5,7 +5,8 @@
 
 set -euo pipefail
 
-repo=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+# -P: the plugin folder may be a symlink to this checkout.
+repo=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)
 ghostty_config="$HOME/.config/ghostty/config"
 
 rm -f "$HOME/.local/state/omarchy/toggles/hypr/omac.lua"
