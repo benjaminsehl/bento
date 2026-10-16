@@ -1,0 +1,4 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
+  <!-- Bento's mark for small sizes (the bar): the icon with heavier dividers. -->
+  <path fill="#000" fill-rule="evenodd" d="M3 1h10a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V3a2 2 0 0 1 2-2zM3 3v10h4V3zm6 0v4h4V3zm0 6v4h4V9z"/>
+</svg>
