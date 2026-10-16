@@ -95,7 +95,7 @@ function lib.toggle_scratchpad()
 end
 
 -- ------------------------------------------------------------- overlay
--- Overlay.qml has the views "expose", "drawer" and "preferences", and sets
+-- Overlay.qml has the views "overview", "drawer" and "preferences", and sets
 -- _G.bento_view to the one that's open.
 function lib.view() return _G.bento_view end
 

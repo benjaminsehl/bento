@@ -1,8 +1,7 @@
-# Pages, Exposé and the drawer
+# Pages, Overview and the drawer
 
 Bento shows Omarchy's workspaces as pages: an ordered row you swipe through, shown as dots in the bar.
 Every part can be switched off or tuned in the Bento app (`bento`, or ⌃⌘,).
-This was a separate plugin, omarchy-pages, until it moved into Bento (then called omac). Its history is kept here.
 
 ![Pages in the Omarchy bar](images/pages.png)
 
@@ -31,9 +30,9 @@ The code is `pages/BarWidget.qml` and `pages/PagePreview.qml` for the bar, and `
 Workspace ids can't go below 1, so new sessions start at workspace 1001 to leave room on the left. If a monitor
 still runs out of room, its windows move up 1000 ids once. The ids never show: dots and ⌃N count positions.
 
-## Exposé
+## Overview
 
-Pinch thumb and three fingers together, press ⌃↑, or press Mission Control (F3) to zoom out to everything.
+Pinch thumb and three fingers together, press ⌃↑, or press F3 on an Apple keyboard to zoom out to everything.
 Spread the fingers, press Esc or click the background to zoom back in.
 
 - Every page is a miniature of your monitor, in dot order, with its windows exactly where Hyprland put them.
@@ -44,17 +43,17 @@ Spread the fingers, press Esc or click the background to zoom back in.
   or the scratchpad to open it. The empty frame at either end starts a new page there.
 - Arrow keys move the selection and ↩ picks it. Only the selected window shows its title.
 
-Spreading thumb and three fingers with Exposé closed shows the desktop (the empty page left of the first one);
+Spreading thumb and three fingers with Overview closed shows the desktop (the empty page left of the first one);
 again brings the windows back.
 
 libinput only processes gestures of up to four fingers, so five-finger gestures can't work.
 
-The code is `expose/Expose.qml`, opened through `Overlay.qml` (`bento expose`).
+The code is `overview/Overview.qml`, opened through `Overlay.qml` (`bento overview`).
 
 ## The drawer
 
 ⌘M sends a window to the hidden `special:minimized` workspace. Swipe three or four fingers down, or press ⌃↓,
-and those windows drop from the top as live cards, like the iPad app switcher. Click a card to bring the window
+and those windows drop from the top as live cards. Click a card to bring the window
 back; drag it up, middle-click or press ⌫ to close it. Fingers up or Esc closes the drawer.
 
 The code is `drawer/Drawer.qml` (`bento drawer`).

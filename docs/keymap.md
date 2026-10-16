@@ -119,8 +119,8 @@ Changed, to match macOS:
 | Keys | Does | Omarchy had |
 |---|---|---|
 | ⌃← / ⌃→ | Previous / next workspace (macOS Spaces) | focus window → ⌃⌥← → |
-| ⌃↑ | Exposé (Mission Control) | focus window up → ⌃⌥↑ |
-| ⌃↓ | Minimized-windows drawer (App Exposé) | focus window down → ⌃⌥↓ |
+| ⌃↑ | Overview | focus window up → ⌃⌥↑ |
+| ⌃↓ | Minimized-windows drawer | focus window down → ⌃⌥↓ |
 | ⌃1 … ⌃0 | The Nth page dot (not workspace id N); ⌃⇧ moves the window there, ⌃⇧⌥ without following | — |
 | ⌃⌘, | The Bento app (preferences) | — |
 | ⌃Tab / ⌃⇧Tab | Next / previous tab in the app | next / previous workspace (⌃→ ⌃← now) |
@@ -248,7 +248,7 @@ Magic Keyboard top row (codes from the test):
 | Key | Sends | Does |
 |---|---|---|
 | F1 / F2 | brightness | Brightness of the focused display |
-| F3 | `KEY_SCALE` (XF86LaunchA) | Exposé |
+| F3 | `KEY_SCALE` (XF86LaunchA) | Overview |
 | F4 | `KEY_SEARCH` (XF86Search) | App launcher |
 | F5 | `KEY_MICMUTE` (XF86AudioMicMute) | Dictation toggle, on the Magic Keyboard only (the Dell's mic key stays mic mute) |
 | F6 | `KEY_SLEEP` (XF86Sleep) | Do Not Disturb. Tested: it doesn't suspend the machine |
@@ -269,8 +269,8 @@ Both trackpads. Finger counts as on a Mac set to four-finger Spaces.
 | Pinch two fingers | Zoom in the app | same |
 | Three or four fingers sideways | Switch page, following your fingers; past the last or first dot, a new empty page | Swipe between Spaces |
 | Three or four fingers up | Show the scratchpad; closes the drawer if it's open | — |
-| Three or four fingers down | Minimized-windows drawer (only when something is minimized); hides the scratchpad or Exposé if open | App Exposé |
-| Pinch thumb + three fingers | Exposé; when the desktop is showing, bring the windows back | Mission Control |
+| Three or four fingers down | Minimized-windows drawer (only when something is minimized); hides the scratchpad or Overview if open | App Exposé |
+| Pinch thumb + three fingers | Overview; when the desktop is showing, bring the windows back | Mission Control |
 | Spread thumb + three fingers | Show desktop (the empty page left of the first); again to come back | Show Desktop |
 
 Every gesture can be switched off, and the finger counts changed, in the Bento

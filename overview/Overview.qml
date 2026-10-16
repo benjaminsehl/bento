@@ -6,7 +6,7 @@ import Quickshell.Wayland
 import qs.Commons
 import qs.Ui
 
-// Exposé: a zoomed-out view of everything.
+// Overview: a zoomed-out view of everything.
 //
 // Every page is a miniature of the monitor with its windows exactly where
 // Hyprland put them, in dot order. The scratchpad is a miniature too,
@@ -300,7 +300,7 @@ Item {
     visible: root.opened || content.opacity > 0
     anchors { top: true; bottom: true; left: true; right: true }
     color: "transparent"
-    WlrLayershell.namespace: "bento-expose"
+    WlrLayershell.namespace: "bento-overview"
     WlrLayershell.layer: WlrLayer.Overlay
     WlrLayershell.keyboardFocus: root.opened ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
     exclusionMode: ExclusionMode.Ignore

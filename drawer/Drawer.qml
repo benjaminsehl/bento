@@ -5,7 +5,7 @@ import Quickshell.Hyprland
 import QtQuick
 import qs.Commons
 
-// The minimized-window drawer, like the iPad app switcher: minimized windows
+// The minimized-window drawer, as a strip of cards: minimized windows
 // (⌘M puts them on the hidden "special:minimized" workspace) shrink into
 // cards on a scrollable strip that drops from the top.
 //

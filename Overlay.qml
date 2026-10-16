@@ -1,12 +1,12 @@
 import QtQuick
 import Quickshell
 import Quickshell.Io
-import "expose"
+import "overview"
 import "drawer"
 import "prefs"
 
 // Bento's one overlay entry point, with three views:
-//   {"view": "expose"}       every page, the scratchpad and minimized windows
+//   {"view": "overview"}       every page, the scratchpad and minimized windows
 //   {"view": "drawer"}       just the minimized windows, dropping from the top
 //   {"view": "preferences"}  the Bento app
 // Summoning while open switches view. Hyprland is told which view is open
@@ -17,23 +17,23 @@ Item {
   property var shell: null
   property var manifest: null
 
-  readonly property bool opened: expose.opened || drawer.opened || preferences.opened
-  readonly property string view: expose.opened ? "expose" : (drawer.opened ? "drawer" : (preferences.opened ? "preferences" : ""))
+  readonly property bool opened: overview.opened || drawer.opened || preferences.opened
+  readonly property string view: overview.opened ? "overview" : (drawer.opened ? "drawer" : (preferences.opened ? "preferences" : ""))
 
   function open(payloadJson) {
     var payload = {}
     try { payload = JSON.parse(payloadJson || "{}") || {} } catch (e) {}
-    var want = payload.view || "expose"
-    if (want !== "expose" && expose.opened) expose.close()
+    var want = payload.view || "overview"
+    if (want !== "overview" && overview.opened) overview.close()
     if (want !== "drawer" && drawer.opened) drawer.close()
     if (want !== "preferences" && preferences.opened) preferences.close()
     if (want === "drawer") drawer.open(payloadJson)
     else if (want === "preferences") preferences.open(payloadJson)
-    else expose.open(payloadJson)
+    else overview.open(payloadJson)
   }
 
   function close() {
-    expose.close()
+    overview.close()
     drawer.close()
     preferences.close()
   }
@@ -44,8 +44,8 @@ Item {
   }
 
   // For the shell's `call` IPC, and testing.
-  function activeWindowIndex() { return expose.activeWindowIndex() }
-  function activate(index) { expose.activate(Number(index)) }
+  function activeWindowIndex() { return overview.activeWindowIndex() }
+  function activate(index) { overview.activate(Number(index)) }
 
   function tellHyprland() {
     hyprState.command = ["hyprctl", "eval", "_G.bento_view = " + (root.view ? JSON.stringify(root.view) : "nil")]
@@ -56,8 +56,8 @@ Item {
 
   Process { id: hyprState }
 
-  Expose {
-    id: expose
+  Overview {
+    id: overview
     shell: root.shell
     manifest: root.manifest
   }

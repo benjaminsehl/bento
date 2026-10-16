@@ -1,5 +1,5 @@
 -- Trackpad: scrolling, tapping, and swiping sideways between pages. Pinching
--- and swiping up and down belong to windows.lua (Exposé, the drawer).
+-- and swiping up and down belong to windows.lua (Overview, the drawer).
 return function(lib, S)
   local T = S.trackpad
 

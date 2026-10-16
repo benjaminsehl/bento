@@ -23,10 +23,9 @@ setting() { # section key
     -s "$repo/defaults.json" <(cat "$config" 2>/dev/null || echo '{}')
 }
 
-# The bar: swap Omarchy's workspace numbers and Bento's dots (and the dots of
-# Bento's earlier names: the standalone Pages plugin, then omac) in whichever
-# section they sit.
-legacy='"io.github.benjaminsehl.pages","io.github.benjaminsehl.omac"'
+# The bar: swap Omarchy's workspace numbers and Bento's dots (and the old
+# standalone Pages plugin) in whichever section they sit.
+legacy='"io.github.benjaminsehl.pages"'
 if [[ -f $shell_json ]]; then
   if [[ $(setting pages dots) == true ]]; then from="[\"omarchy.workspaces\",$legacy]"; to=$plugin
   else from="[\"$plugin\",$legacy]"; to=omarchy.workspaces; fi

@@ -5,7 +5,7 @@
   "version": "2.0.0-dev",
   "author": "Benjamin Sehl",
   "license": "MIT",
-  "description": "An opinionated take on Omarchy: windows, pages and gestures that feel considered. Mac-grade keys, pages as dots, Exposé, a minimized-windows drawer, and an app to tune every piece.",
+  "description": "An opinionated take on Omarchy: pages as dots, Overview, a minimized-windows drawer, gestures that follow your fingers, and an app to tune every piece.",
   "kinds": [
     "service",
     "overlay",

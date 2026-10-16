@@ -1,4 +1,4 @@
--- Bento: Omarchy, thoughtfully arranged. Keys, pages, Exposé and gestures.
+-- Bento: Omarchy, thoughtfully arranged. Keys, pages, Overview and gestures.
 --
 -- install.sh loads this file from ~/.local/state/omarchy/toggles/hypr/, which
 -- Omarchy loads after ~/.config/hypr/bindings.lua. Each feature lives in its

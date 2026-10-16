@@ -29,7 +29,7 @@
   },
   "windows": {
     "minimize": true,
-    "expose": true
+    "overview": true
   },
   "terminal": {
     "ghostty": true

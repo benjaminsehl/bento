@@ -52,25 +52,6 @@ if [[ ! -f $toggles/bento.lua || $(<"$toggles/bento.lua") != "$hook" ]]; then
   changed=yes
 fi
 rm -f "$toggles/omarchy-mac.lua"
-
-# Bento used to be called omac. Take its hooks out and carry its settings over;
-# bento-apply moves the bar's dots to the new id.
-if [[ -f $toggles/omac.lua ]]; then rm -f "$toggles/omac.lua"; changed=yes; fi
-for tool in omac omac-apply; do
-  [[ -L $bin/$tool ]] && rm -f "$bin/$tool"
-done
-rm -f "$apps/omac.desktop"
-old_config="${XDG_CONFIG_HOME:-$HOME/.config}/omac"
-new_config="${XDG_CONFIG_HOME:-$HOME/.config}/bento"
-if [[ -d $old_config && ! -e $new_config ]]; then mv "$old_config" "$new_config"; fi
-rm -f "$HOME/.local/state/omac/"keymap-*.xkb "$HOME/.local/state/omac/errors"
-rmdir "$HOME/.local/state/omac" 2>/dev/null || true
-ghostty_config="$HOME/.config/ghostty/config"
-if [[ -f $ghostty_config ]] && grep -q 'ghostty/omac\.conf"$\|^# Added by omac' "$ghostty_config"; then
-  sed -i -e '/^# Added by omac/d' -e '/^config-file = ?".*\/ghostty\/omac\.conf"$/d' "$ghostty_config"
-  changed=yes
-fi
-
 # Pages used to be its own plugin (omarchy-pages); Bento has it now.
 if [[ -f $toggles/pages.lua ]]; then rm -f "$toggles/pages.lua"; changed=yes; fi
 
@@ -90,14 +71,14 @@ Comment=Windows, pages, keys and gestures for Omarchy
 Exec=$bin/bento
 Icon=$repo/docs/images/icon-light.svg
 Categories=Settings;
-Keywords=bento;omac;mac;keyboard;trackpad;gestures;pages;expose;windows;preferences;
+Keywords=bento;keyboard;trackpad;gestures;pages;overview;windows;preferences;
 EOF
 )
 if [[ ! -f $apps/bento.desktop || $(<"$apps/bento.desktop") != "$desktop" ]]; then
   printf '%s\n' "$desktop" > "$apps/bento.desktop"
   changed=yes
 fi
-# Earlier omac linked a paste helper; Ghostty pastes images itself now.
+# An earlier version linked a paste helper; Ghostty pastes images itself now.
 [[ -L $bin/mac-paste ]] && rm -f "$bin/mac-paste"
 
 if [[ $changed == no ]]; then

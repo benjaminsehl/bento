@@ -11,14 +11,14 @@ var panes = [
     id: "keyboard",
     title: "Keyboard",
     rows: [
-      { section: "keyboard", key: "macModifiers", type: "bool", title: "Mac modifier keys",
-        detail: "⌘ sends Ctrl, so apps get their usual shortcuts. ⌃ runs Omarchy, ⌥ types Mac characters. Everything below needs this." },
-      { section: "keyboard", key: "textEditing", type: "bool", title: "Mac text editing", requires: ["keyboard", "macModifiers"],
+      { section: "keyboard", key: "macModifiers", type: "bool", title: "Bento modifier layout",
+        detail: "⌘ sends Ctrl, so apps get their usual shortcuts. ⌃ runs the desktop, ⌥ types special characters. Everything below needs this." },
+      { section: "keyboard", key: "textEditing", type: "bool", title: "Text editing everywhere", requires: ["keyboard", "macModifiers"],
         detail: "⌘← ⌘→ to the line's ends, ⌥← ⌥→ by word, ⌘⌫, and ⌃A ⌃E ⌃K in every app." },
-      { section: "keyboard", key: "appShortcuts", type: "bool", title: "Mac app shortcuts", requires: ["keyboard", "macModifiers"],
+      { section: "keyboard", key: "appShortcuts", type: "bool", title: "App shortcuts", requires: ["keyboard", "macModifiers"],
         detail: "⌘W closes the tab, then the window. ⌘Q quits, ⌘Tab switches, ⌘Space finds apps, ⌘⇧3 ⌘⇧4 ⌘⇧5 capture the screen." },
-      { section: "keyboard", key: "topRow", type: "bool", title: "Magic Keyboard top row", requires: ["keyboard", "macModifiers"],
-        detail: "Mission Control, Spotlight, Dictation and Do Not Disturb, without fn." },
+      { section: "keyboard", key: "topRow", type: "bool", title: "Top row without fn", requires: ["keyboard", "macModifiers"],
+        detail: "On Apple keyboards: Overview, the launcher, dictation and Do Not Disturb, without holding fn." },
       { section: "keyboard", key: "dictation", type: "bool", title: "Caps Lock dictation", requires: ["keyboard", "macModifiers"],
         detail: "Hold Caps Lock to dictate, if voxtype is installed." }
     ]
@@ -38,7 +38,7 @@ var panes = [
         detail: "How many fingers swipe between pages." },
       { section: "trackpad", key: "swipeLock", type: "bool", title: "Hold still over the scratchpad", requires: ["trackpad", "swipe"],
         detail: "While the scratchpad is open, sideways swipes don't change the page underneath." },
-      { section: "trackpad", key: "pinch", type: "bool", title: "Pinch for Exposé",
+      { section: "trackpad", key: "pinch", type: "bool", title: "Pinch for Overview",
         detail: "Four fingers together show every window. Apart, they show the desktop." },
       { section: "trackpad", key: "upDown", type: "bool", title: "Swipe up and down",
         detail: "Up shows the scratchpad. Down shows your minimized windows, or puts away what's open." },
@@ -77,7 +77,7 @@ var panes = [
     rows: [
       { section: "windows", key: "minimize", type: "bool", title: "Minimize with ⌘M",
         detail: "Minimized windows wait in a drawer. Swipe down or press ⌃↓ to bring one back." },
-      { section: "windows", key: "expose", type: "bool", title: "Exposé",
+      { section: "windows", key: "overview", type: "bool", title: "Overview",
         detail: "Every page, the scratchpad and your minimized windows at once. Pinch, or press ⌃↑." }
     ]
   },
@@ -85,7 +85,7 @@ var panes = [
     id: "terminal",
     title: "Terminal",
     rows: [
-      { section: "terminal", key: "ghostty", type: "bool", title: "Mac keys in Ghostty",
+      { section: "terminal", key: "ghostty", type: "bool", title: "Bento keys in Ghostty",
         detail: "⌘C ⌘V copy and paste, ⌥ moves by word, and ⌃ letters send control characters." }
     ]
   },

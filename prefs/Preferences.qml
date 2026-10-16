@@ -337,7 +337,7 @@ Item {
       Text {
         width: parent.width
         wrapMode: Text.WordWrap
-        text: "Omarchy, thoughtfully arranged. Pages instead of numbered workspaces, Exposé, a drawer for minimized windows, Mac-grade keys and trackpad gestures that follow your fingers. Each piece can be switched off on its own."
+        text: "Omarchy, thoughtfully arranged. Pages instead of numbered workspaces, Overview, a drawer for minimized windows, a keyboard layout that gives apps their native shortcuts, and trackpad gestures that follow your fingers. Each piece can be switched off on its own."
         color: root.fg
         font.family: Style.font.family
         font.pixelSize: Style.font.title

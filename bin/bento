@@ -1,8 +1,11 @@
 #!/bin/bash
-# Open the Bento app (preferences). `bento expose` and `bento drawer` open those views.
+# Open the Bento app (preferences), optionally at a pane:
+#   bento [preferences [keyboard|trackpad|pages|windows|terminal|about]]
+#   bento overview | bento drawer
 view=${1:-preferences}
 case $view in
-  preferences|expose|drawer) ;;
-  *) echo "usage: bento [preferences|expose|drawer]" >&2; exit 2 ;;
+  preferences|overview|drawer) ;;
+  *) echo "usage: bento [preferences [pane]|overview|drawer]" >&2; exit 2 ;;
 esac
-exec omarchy-shell shell summon io.github.benjaminsehl.bento "{\"view\":\"$view\"}"
+payload=$(jq -cn --arg view "$view" --arg pane "${2:-}" '{view: $view} + (if $pane == "" then {} else {pane: $pane} end)')
+exec omarchy-shell shell summon io.github.benjaminsehl.bento "$payload"

@@ -71,7 +71,7 @@ return function(lib, S)
   end
 
   -- --------------------------------------------------------- ⌃: desktops
-  -- windows.lua puts Exposé on ⌃↑ and the drawer on ⌃↓ when they're on.
+  -- windows.lua puts Overview on ⌃↑ and the drawer on ⌃↓ when they're on.
   rebind("SUPER + LEFT", "Previous workspace", hl.dsp.focus({ workspace = "e-1" }))
   rebind("SUPER + RIGHT", "Next workspace", hl.dsp.focus({ workspace = "e+1" }))
   rebind("SUPER + UP", "Toggle scratchpad", lib.toggle_scratchpad)
@@ -220,7 +220,7 @@ return function(lib, S)
 
   -- ------------------------------------------------- Magic Keyboard top row
   -- With hid_apple fnmode=1 (system/apple-fnmode.sh) the top row sends its
-  -- Mac functions without fn. windows.lua puts Exposé on Mission Control.
+  -- Mac functions without fn. windows.lua puts Overview on Mission Control.
   if K.topRow then
     local apple = { inclusive = true, list = { "apple-inc.-magic-keyboard-with-touch-id" } }
     local not_apple = { inclusive = false, list = { "apple-inc.-magic-keyboard-with-touch-id" } }
