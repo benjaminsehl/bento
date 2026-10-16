@@ -1,7 +1,7 @@
 -- Keyboard: Mac modifiers, text editing, ⌘ app shortcuts, the Magic Keyboard
 -- top row and Caps Lock dictation.
 --
--- omac's keyboard layout (xkb/symbols/omac) swaps the modifiers themselves:
+-- Bento's keyboard layout (xkb/symbols/bento) swaps the modifiers themselves:
 --
 --   you press   Linux sees          so
 --   ⌘           CTRL                apps get native Ctrl shortcuts
@@ -17,7 +17,7 @@ return function(lib, S)
   local rebind, send, send_once, is_terminal = lib.rebind, lib.send, lib.send_once, lib.is_terminal
 
   -- -------------------------------------------------------------- keymaps
-  -- install.sh compiles one keymap per keyboard type into ~/.local/state/omac.
+  -- install.sh compiles one keymap per keyboard type into ~/.local/state/bento.
   -- Keyboards not listed keep Omarchy's layout.
   local keyboards = {
     { name = "apple-inc.-magic-keyboard-with-touch-id", keymap = "apple" },
@@ -52,7 +52,7 @@ return function(lib, S)
   -- macOS uses plain ⌃ + letter for shell and line-editing keys. Omarchy's
   -- Super+letter bindings go: copy/paste/cut and close are native on ⌘ now,
   -- and the window actions move to ⌃⌥ below. Ghostty turns ⌃ + letter into
-  -- control characters (ghostty/omac.conf).
+  -- control characters (ghostty/bento.conf).
   for _, key in ipairs({ "C", "V", "X", "W", "J", "P", "T", "F", "O", "L", "S", "G", "K" }) do
     hl.unbind("SUPER + " .. key)
   end
@@ -211,7 +211,7 @@ return function(lib, S)
     -- ⌥⌘Esc: force quit.
     o.bind("CTRL + MOD5 + ESCAPE", "Force quit window", hl.dsp.window.kill())
 
-    -- ⌃⌘: macOS's own keys. (⌃⌘, for the omac app is in windows.lua.)
+    -- ⌃⌘: macOS's own keys. (⌃⌘, for the Bento app is in windows.lua.)
     rebind("SUPER + CTRL + F", "Full screen", hl.dsp.window.fullscreen({ mode = "fullscreen" }))
     rebind("SUPER + CTRL + Q", "Lock system", "omarchy-system-lock")
     rebind("SUPER + CTRL + SPACE", "Emojis", "omarchy-shell shell toggle omarchy.emojis")

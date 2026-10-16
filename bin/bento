@@ -1,0 +1,8 @@
+#!/bin/bash
+# Open the Bento app (preferences). `bento expose` and `bento drawer` open those views.
+view=${1:-preferences}
+case $view in
+  preferences|expose|drawer) ;;
+  *) echo "usage: bento [preferences|expose|drawer]" >&2; exit 2 ;;
+esac
+exec omarchy-shell shell summon io.github.benjaminsehl.bento "{\"view\":\"$view\"}"

@@ -15,7 +15,7 @@ import qs.Commons
 //   ← →              choose a card
 //   Esc / click away close the drawer
 //
-// Hyprland opens it (three or four fingers down; ⌃↓ with omac). Overlay.qml
+// Hyprland opens it (three or four fingers down; ⌃↓ with Bento). Overlay.qml
 // tells Hyprland when it's open, so fingers up can close it again.
 Item {
   id: root
@@ -28,7 +28,7 @@ Item {
   property int selectedIndex: 0
   property var cards: []
 
-  readonly property string pluginId: (manifest && manifest.id) || "io.github.benjaminsehl.omac"
+  readonly property string pluginId: (manifest && manifest.id) || "io.github.benjaminsehl.bento"
 
   function minimizedToplevels() {
     var out = []
@@ -132,7 +132,7 @@ Item {
     screen: root.focusedScreen()
     anchors { top: true; bottom: true; left: true; right: true }
     color: "transparent"
-    WlrLayershell.namespace: "omac-drawer"
+    WlrLayershell.namespace: "bento-drawer"
     WlrLayershell.layer: WlrLayer.Overlay
     WlrLayershell.keyboardFocus: WlrKeyboardFocus.Exclusive
     exclusionMode: ExclusionMode.Ignore

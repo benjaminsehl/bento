@@ -1,8 +1,8 @@
 # Pages, Exposé and the drawer
 
-omac shows Omarchy's workspaces as pages: an ordered row you swipe through, shown as dots in the bar.
-Every part can be switched off or tuned in the omac app (`omac`, or ⌃⌘,).
-This was a separate plugin, omarchy-pages, until it moved into omac. Its history is kept here.
+Bento shows Omarchy's workspaces as pages: an ordered row you swipe through, shown as dots in the bar.
+Every part can be switched off or tuned in the Bento app (`bento`, or ⌃⌘,).
+This was a separate plugin, omarchy-pages, until it moved into Bento (then called omac). Its history is kept here.
 
 ![Pages in the Omarchy bar](images/pages.png)
 
@@ -49,7 +49,7 @@ again brings the windows back.
 
 libinput only processes gestures of up to four fingers, so five-finger gestures can't work.
 
-The code is `expose/Expose.qml`, opened through `Overlay.qml` (`omac expose`).
+The code is `expose/Expose.qml`, opened through `Overlay.qml` (`bento expose`).
 
 ## The drawer
 
@@ -57,4 +57,4 @@ The code is `expose/Expose.qml`, opened through `Overlay.qml` (`omac expose`).
 and those windows drop from the top as live cards, like the iPad app switcher. Click a card to bring the window
 back; drag it up, middle-click or press ⌫ to close it. Fingers up or Esc closes the drawer.
 
-The code is `drawer/Drawer.qml` (`omac drawer`).
+The code is `drawer/Drawer.qml` (`bento drawer`).

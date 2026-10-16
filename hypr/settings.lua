@@ -1,12 +1,12 @@
--- omac's settings: defaults.json in the checkout, overridden by
--- ~/.config/omac/settings.json, which the omac app writes. Both are nested
+-- Bento's settings: defaults.json in the checkout, overridden by
+-- ~/.config/bento/settings.json, which the Bento app writes. Both are nested
 -- JSON objects with the same shape; unknown keys are ignored.
 
 -- A small JSON decoder: Hyprland's Lua has none. Objects, arrays, strings,
 -- numbers, true, false and null.
 local function decode(text)
   local pos = 1
-  local function fail(msg) error("omac settings: " .. msg .. " at character " .. pos) end
+  local function fail(msg) error("bento settings: " .. msg .. " at character " .. pos) end
   local function skip() pos = text:find("[^ \t\r\n]", pos) or #text + 1 end
   local value
 
@@ -110,7 +110,7 @@ end
 return function(repo)
   local defaults = decode(read(repo .. "/defaults.json") or "{}") or {}
   local home = os.getenv("HOME")
-  local path = (os.getenv("XDG_CONFIG_HOME") or (home .. "/.config")) .. "/omac/settings.json"
+  local path = (os.getenv("XDG_CONFIG_HOME") or (home .. "/.config")) .. "/bento/settings.json"
   local text = read(path)
   local user = {}
   if text then

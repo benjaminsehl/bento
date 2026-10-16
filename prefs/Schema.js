@@ -1,6 +1,6 @@
 .pragma library
 
-// What the omac app shows. Every row maps to one key in defaults.json.
+// What the Bento app shows. Every row maps to one key in defaults.json.
 //   type      "bool", "choice" (options) or "number" (min, max, step, unit)
 //   requires  [section, key] that must be on for the row to matter
 //   header    a quiet heading above a group of rows

@@ -2,17 +2,17 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 
-// omac's settings for the shell side: defaults.json in the checkout,
-// overridden by ~/.config/omac/settings.json. Same rules as hypr/settings.lua:
+// Bento's settings for the shell side: defaults.json in the checkout,
+// overridden by ~/.config/bento/settings.json. Same rules as hypr/settings.lua:
 // a user value counts only where the default has that key with the same type.
 //
 //   Settings { id: settings }
 //   settings.get("pages", "dotSize")
-//   settings.set("pages", "dotSize", 6)   // saves and applies (omac-apply)
+//   settings.set("pages", "dotSize", 6)   // saves and applies (bento-apply)
 Item {
   id: root
 
-  readonly property string configDir: (Quickshell.env("XDG_CONFIG_HOME") || (Quickshell.env("HOME") + "/.config")) + "/omac"
+  readonly property string configDir: (Quickshell.env("XDG_CONFIG_HOME") || (Quickshell.env("HOME") + "/.config")) + "/bento"
   readonly property string path: configDir + "/settings.json"
   readonly property string repo: decodeURIComponent(Qt.resolvedUrl(".").toString().replace(/^file:\/\//, "").replace(/\/$/, ""))
 
@@ -75,15 +75,15 @@ Item {
     }
   }
 
-  // omac-apply reloads Hyprland, syncs the bar and Ghostty, and puts the
+  // bento-apply reloads Hyprland, syncs the bar and Ghostty, and puts the
   // previous settings back if Hyprland rejects the new ones.
   Process {
     id: apply
-    command: [root.repo + "/bin/omac-apply"]
+    command: [root.repo + "/bin/bento-apply"]
     stderr: StdioCollector { id: applyErr }
     onExited: function(code) {
       root.applying = false
-      root.applyError = code === 0 ? "" : (applyErr.text.trim() || "omac-apply failed")
+      root.applyError = code === 0 ? "" : (applyErr.text.trim() || "bento-apply failed")
       if (code !== 0) userFile.reload()
     }
   }

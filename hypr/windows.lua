@@ -56,7 +56,7 @@ return function(lib, S)
   end
 
   -- ------------------------------------------------------------- keys
-  -- With omac's keys: ⌘M minimizes, ⌃↑ and Mission Control open Exposé, ⌃↓
+  -- With Bento's keys: ⌘M minimizes, ⌃↑ and Mission Control open Exposé, ⌃↓
   -- the drawer. Without them, SUPER + M minimizes.
   if W.minimize then
     lib.rebind(mac and "CTRL + M" or "SUPER + M", "Minimize window", minimize)
@@ -67,8 +67,8 @@ return function(lib, S)
     if S.keyboard.topRow then lib.rebind("XF86LaunchA", "Exposé", toggle_expose) end
   end
 
-  -- ⌃⌘, opens omac's preferences, like ⌘, in an app.
-  lib.rebind("SUPER + CTRL + COMMA", "omac preferences", function() lib.show("preferences") end)
+  -- ⌃⌘, opens Bento's preferences, like ⌘, in an app.
+  lib.rebind("SUPER + CTRL + COMMA", "Bento preferences", function() lib.show("preferences") end)
 
   -- --------------------------------------------------------- gestures
   if T.pinch then

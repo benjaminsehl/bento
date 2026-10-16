@@ -5,12 +5,12 @@ import "expose"
 import "drawer"
 import "prefs"
 
-// omac's one overlay entry point, with three views:
+// Bento's one overlay entry point, with three views:
 //   {"view": "expose"}       every page, the scratchpad and minimized windows
 //   {"view": "drawer"}       just the minimized windows, dropping from the top
-//   {"view": "preferences"}  the omac app
+//   {"view": "preferences"}  the Bento app
 // Summoning while open switches view. Hyprland is told which view is open
-// (_G.omac_view), so gestures can close what they opened.
+// (_G.bento_view), so gestures can close what they opened.
 Item {
   id: root
 
@@ -48,11 +48,11 @@ Item {
   function activate(index) { expose.activate(Number(index)) }
 
   function tellHyprland() {
-    hyprState.command = ["hyprctl", "eval", "_G.omac_view = " + (root.view ? JSON.stringify(root.view) : "nil")]
+    hyprState.command = ["hyprctl", "eval", "_G.bento_view = " + (root.view ? JSON.stringify(root.view) : "nil")]
     hyprState.running = true
   }
   onViewChanged: tellHyprland()
-  Component.onDestruction: Quickshell.execDetached(["hyprctl", "eval", "_G.omac_view = nil"])
+  Component.onDestruction: Quickshell.execDetached(["hyprctl", "eval", "_G.bento_view = nil"])
 
   Process { id: hyprState }
 

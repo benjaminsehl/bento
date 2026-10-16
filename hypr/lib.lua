@@ -1,11 +1,11 @@
--- Helpers shared by omac's modules. Modules can also hang functions on this
+-- Helpers shared by Bento's modules. Modules can also hang functions on this
 -- table for later modules (pages.lua adds lib.pages for windows.lua).
 local lib = {}
 
 lib.home = os.getenv("HOME")
 lib.omarchy = os.getenv("OMARCHY_PATH") or "/usr/share/omarchy"
-lib.state = lib.home .. "/.local/state/omac"
-lib.plugin = "io.github.benjaminsehl.omac"
+lib.state = lib.home .. "/.local/state/bento"
+lib.plugin = "io.github.benjaminsehl.bento"
 
 function lib.exists(path)
   local f = io.open(path, "r")
@@ -96,16 +96,16 @@ end
 
 -- ------------------------------------------------------------- overlay
 -- Overlay.qml has the views "expose", "drawer" and "preferences", and sets
--- _G.omac_view to the one that's open.
-function lib.view() return _G.omac_view end
+-- _G.bento_view to the one that's open.
+function lib.view() return _G.bento_view end
 
 function lib.show(view)
-  _G.omac_view = view
+  _G.bento_view = view
   hl.exec_cmd("omarchy-shell shell summon " .. lib.plugin .. " '{\"view\":\"" .. view .. "\"}'")
 end
 
 function lib.hide_overlay()
-  _G.omac_view = nil
+  _G.bento_view = nil
   hl.exec_cmd("omarchy-shell shell hide " .. lib.plugin)
 end
 

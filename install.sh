@@ -1,24 +1,24 @@
 #!/bin/bash
-# Hook omac into the places Omarchy loads from. Everything points back at this
+# Hook Bento into the places Omarchy loads from. Everything points back at this
 # checkout, so editing it and running `hyprctl reload` is the whole update
 # (re-run install.sh after changing xkb/). Settings, and what follows from them
-# (the bar's page dots, Ghostty's Mac keys), are bin/omac-apply's job.
+# (the bar's page dots, Ghostty's Mac keys), are bin/bento-apply's job.
 #
 # Safe to re-run: a run that finds everything in place changes nothing. If
-# Hyprland reports config errors after loading omac, it unhooks itself again.
+# Hyprland reports config errors after loading Bento, it unhooks itself again.
 
 set -euo pipefail
 
 # -P: the plugin folder may be a symlink to this checkout.
 repo=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)
 toggles="$HOME/.local/state/omarchy/toggles/hypr"
-state="$HOME/.local/state/omac"
+state="$HOME/.local/state/bento"
 bin="$HOME/.local/bin"
 apps="$HOME/.local/share/applications"
 
-fail() { echo "omac: $*" >&2; exit 1; }
+fail() { echo "bento: $*" >&2; exit 1; }
 
-[[ -f $repo/hypr/omac.lua ]] || fail "run install.sh from an omac checkout"
+[[ -f $repo/hypr/bento.lua ]] || fail "run install.sh from a Bento checkout"
 
 omarchy_path=${OMARCHY_PATH:-/usr/share/omarchy}
 [[ -f $omarchy_path/default/hypr/toggles.lua ]] || fail "needs Omarchy 4 or newer (Lua Hyprland config)"
@@ -33,10 +33,10 @@ fi
 mkdir -p "$toggles" "$state" "$bin" "$apps"
 changed=no
 
-# Keymaps: one per keyboard type, compiled from xkb/symbols/omac.
+# Keymaps: one per keyboard type, compiled from xkb/symbols/bento.
 for variant in apple pc; do
   out="$state/keymap-$variant.xkb"
-  new=$(xkbcli compile-keymap --include "$repo/xkb" --include-defaults --layout omac --variant "$variant") \
+  new=$(xkbcli compile-keymap --include "$repo/xkb" --include-defaults --layout bento --variant "$variant") \
     || fail "could not compile the $variant keymap"
   if [[ ! -f $out || $(<"$out") != "$new" ]]; then
     printf '%s\n' "$new" > "$out"
@@ -46,55 +46,74 @@ done
 
 # Omarchy lists the toggles directory with `find -type f`, which skips
 # symlinks, so the hook is a real file that loads the checkout.
-hook=$(printf -- '-- Written by omac install.sh.\n_G.omac_repo = [[%s]]\ndofile([[%s]])' "$repo" "$repo/hypr/omac.lua")
-if [[ ! -f $toggles/omac.lua || $(<"$toggles/omac.lua") != "$hook" ]]; then
-  printf '%s\n' "$hook" > "$toggles/omac.lua"
+hook=$(printf -- '-- Written by bento install.sh.\n_G.bento_repo = [[%s]]\ndofile([[%s]])' "$repo" "$repo/hypr/bento.lua")
+if [[ ! -f $toggles/bento.lua || $(<"$toggles/bento.lua") != "$hook" ]]; then
+  printf '%s\n' "$hook" > "$toggles/bento.lua"
   changed=yes
 fi
 rm -f "$toggles/omarchy-mac.lua"
-# Pages used to be its own plugin (omarchy-pages); omac has it now.
+
+# Bento used to be called omac. Take its hooks out and carry its settings over;
+# bento-apply moves the bar's dots to the new id.
+if [[ -f $toggles/omac.lua ]]; then rm -f "$toggles/omac.lua"; changed=yes; fi
+for tool in omac omac-apply; do
+  [[ -L $bin/$tool ]] && rm -f "$bin/$tool"
+done
+rm -f "$apps/omac.desktop"
+old_config="${XDG_CONFIG_HOME:-$HOME/.config}/omac"
+new_config="${XDG_CONFIG_HOME:-$HOME/.config}/bento"
+if [[ -d $old_config && ! -e $new_config ]]; then mv "$old_config" "$new_config"; fi
+rm -f "$HOME/.local/state/omac/"keymap-*.xkb "$HOME/.local/state/omac/errors"
+rmdir "$HOME/.local/state/omac" 2>/dev/null || true
+ghostty_config="$HOME/.config/ghostty/config"
+if [[ -f $ghostty_config ]] && grep -q 'ghostty/omac\.conf"$\|^# Added by omac' "$ghostty_config"; then
+  sed -i -e '/^# Added by omac/d' -e '/^config-file = ?".*\/ghostty\/omac\.conf"$/d' "$ghostty_config"
+  changed=yes
+fi
+
+# Pages used to be its own plugin (omarchy-pages); Bento has it now.
 if [[ -f $toggles/pages.lua ]]; then rm -f "$toggles/pages.lua"; changed=yes; fi
 
-for tool in mac-keybindings omac omac-apply; do
+for tool in mac-keybindings bento bento-apply; do
   if [[ $(readlink "$bin/$tool" 2>/dev/null) != "$repo/bin/$tool" ]]; then
     ln -sfn "$repo/bin/$tool" "$bin/$tool"
     changed=yes
   fi
 done
 
-# The omac app, in the app launcher.
+# The Bento app, in the app launcher.
 desktop=$(cat <<EOF
 [Desktop Entry]
 Type=Application
-Name=omac
-Comment=Mac keys, pages, Exposé and gestures for Omarchy
-Exec=$bin/omac
+Name=Bento
+Comment=Windows, pages, keys and gestures for Omarchy
+Exec=$bin/bento
 Icon=$repo/docs/images/icon-light.svg
 Categories=Settings;
-Keywords=mac;keyboard;trackpad;gestures;pages;expose;preferences;
+Keywords=bento;omac;mac;keyboard;trackpad;gestures;pages;expose;windows;preferences;
 EOF
 )
-if [[ ! -f $apps/omac.desktop || $(<"$apps/omac.desktop") != "$desktop" ]]; then
-  printf '%s\n' "$desktop" > "$apps/omac.desktop"
+if [[ ! -f $apps/bento.desktop || $(<"$apps/bento.desktop") != "$desktop" ]]; then
+  printf '%s\n' "$desktop" > "$apps/bento.desktop"
   changed=yes
 fi
 # Earlier omac linked a paste helper; Ghostty pastes images itself now.
 [[ -L $bin/mac-paste ]] && rm -f "$bin/mac-paste"
 
 if [[ $changed == no ]]; then
-  echo "omac is already installed."
+  echo "Bento is already installed."
   exit 0
 fi
 
 # Apply the settings (bar, Ghostty) and reload Hyprland. If it still reports
-# errors with the settings put back, take omac out again.
-"$repo/bin/omac-apply" || true
+# errors with the settings put back, take Bento out again.
+"$repo/bin/bento-apply" || true
 errors=$(hyprctl configerrors)
 if [[ -n ${errors//[[:space:]]/} ]]; then
-  rm -f "$toggles/omac.lua"
+  rm -f "$toggles/bento.lua"
   hyprctl reload >/dev/null
   echo "$errors" >&2
-  fail "Hyprland reported errors, so omac unhooked itself again"
+  fail "Hyprland reported errors, so Bento unhooked itself again"
 fi
 
-echo "omac installed."
+echo "Bento installed."

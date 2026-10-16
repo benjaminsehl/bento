@@ -80,7 +80,7 @@ Where Linux apps read Ctrl differently, the plugin translates:
 | ⌘Z / ⌘⇧Z | Undo / redo | undo / redo in most apps | native; Ctrl+Y where an app needs it ❓ |
 | ⌘[ / ⌘] | Back / forward | — (apps vary) | Alt+← / Alt+→ |
 | ⌘⇧[ / ⌘⇧] | Previous / next tab | — | Ctrl+Shift+Tab / Ctrl+Tab |
-| ⌘W | Close tab; the window once no tab is left (omac's logic) | close tab; nothing in some apps | Ctrl+W, then closes the window if nothing closed |
+| ⌘W | Close tab; the window once no tab is left (Bento's logic) | close tab; nothing in some apps | Ctrl+W, then closes the window if nothing closed |
 | ⌘Q | **Quit**: close every window of the app | quit, in some apps | — (Hyprland closes them; apps still ask to save) |
 | ⌘M | Minimize the window | — | — (Hyprland: hidden "minimized" workspace) |
 | ⌘Tab / ⌘⇧Tab | Next / previous window, raised | next / previous tab | — (Hyprland cycles windows) |
@@ -122,7 +122,7 @@ Changed, to match macOS:
 | ⌃↑ | Exposé (Mission Control) | focus window up → ⌃⌥↑ |
 | ⌃↓ | Minimized-windows drawer (App Exposé) | focus window down → ⌃⌥↓ |
 | ⌃1 … ⌃0 | The Nth page dot (not workspace id N); ⌃⇧ moves the window there, ⌃⇧⌥ without following | — |
-| ⌃⌘, | The omac app (preferences) | — |
+| ⌃⌘, | The Bento app (preferences) | — |
 | ⌃Tab / ⌃⇧Tab | Next / previous tab in the app | next / previous workspace (⌃→ ⌃← now) |
 
 ### ⌃ + letter
@@ -273,7 +273,7 @@ Both trackpads. Finger counts as on a Mac set to four-finger Spaces.
 | Pinch thumb + three fingers | Exposé; when the desktop is showing, bring the windows back | Mission Control |
 | Spread thumb + three fingers | Show desktop (the empty page left of the first); again to come back | Show Desktop |
 
-Every gesture can be switched off, and the finger counts changed, in the omac
+Every gesture can be switched off, and the finger counts changed, in the Bento
 app's Trackpad pane.
 
 Tested: a pinch fires Hyprland's `pinchout` (the gesture's scale goes below 1),

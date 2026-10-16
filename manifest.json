@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
-  "id": "io.github.benjaminsehl.omac",
-  "name": "omac",
+  "id": "io.github.benjaminsehl.bento",
+  "name": "Bento",
   "version": "2.0.0-dev",
-  "author": "Benjamin Sehl (fork of Neil Chudleigh's omac)",
+  "author": "Benjamin Sehl",
   "license": "MIT",
-  "description": "Omarchy, the Mac way: Mac keys, pages as dots, Exposé, a minimized-windows drawer and Mac gestures, with an app to switch each on or off.",
+  "description": "An opinionated take on Omarchy: windows, pages and gestures that feel considered. Mac-grade keys, pages as dots, Exposé, a minimized-windows drawer, and an app to tune every piece.",
   "kinds": [
     "service",
     "overlay",

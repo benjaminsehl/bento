@@ -1,8 +1,0 @@
-#!/bin/bash
-# Open the omac app (preferences). `omac expose` and `omac drawer` open those views.
-view=${1:-preferences}
-case $view in
-  preferences|expose|drawer) ;;
-  *) echo "usage: omac [preferences|expose|drawer]" >&2; exit 2 ;;
-esac
-exec omarchy-shell shell summon io.github.benjaminsehl.omac "{\"view\":\"$view\"}"

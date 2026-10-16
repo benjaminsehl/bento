@@ -9,11 +9,11 @@ import ".."
 // Page dots: one dot per existing workspace. Hyprland destroys empty
 // workspaces when you leave them, so empty pages simply vanish. The focused
 // page is always shown (even if empty) as a wider, brighter pill. Hover a dot
-// for a live preview of that page. Sizes and previews come from omac's
+// for a live preview of that page. Sizes and previews come from Bento's
 // settings (the "pages" section).
 BarWidget {
   id: root
-  moduleName: "io.github.benjaminsehl.omac"
+  moduleName: "io.github.benjaminsehl.bento"
 
   Settings { id: settings }
   readonly property bool previewsOn: settings.get("pages", "previews") !== false

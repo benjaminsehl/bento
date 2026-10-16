@@ -1,24 +1,17 @@
-> **omac is Omarchy, the Mac way.** It's opinionated and all in one plugin:
->
-> - **Mac keys.** ⌘ sends Ctrl at the keyboard layout, so apps get native shortcuts, and Omarchy lives on ⌃. Mac text editing, ⌘W/⌘Q/⌘Tab, Option characters and the Magic Keyboard's top row. The key map is [`docs/keymap.md`](docs/keymap.md).
-> - **Pages.** Workspaces show as dots in the bar, with a live preview on hover. ⌃2 is always the second dot, empty pages disappear, and you can swipe past either end for a new one. See [`docs/pages.md`](docs/pages.md).
-> - **Exposé and the drawer.** Pinch to zoom out to every page, the scratchpad and minimized windows. ⌘M minimizes, and swiping down brings minimized windows back.
-> - **The omac app.** Switch every feature on or off and tune it: run `omac`, press ⌃⌘, or find it in the app launcher.
->
-> Install from a checkout with `./install.sh`; the Magic Keyboard's Mac top row is `sudo system/apple-fnmode.sh`. The rest of this README is still upstream's and partly out of date.
-
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/images/icon-dark.svg">
-    <img src="docs/images/icon-light.svg" width="72" height="72" alt="omac">
+    <img src="docs/images/icon-light.svg" width="72" height="72" alt="Bento">
   </picture>
 </p>
 
-<h1 align="center">omac</h1>
+<h1 align="center">Bento</h1>
 
 <p align="center">
-  <strong>Mac-like nav for Omarchy.</strong><br>
-  ⌘ shortcuts, Mac caret movement and Mac-feel workspace swipes, in one file you can read.
+  <strong>Omarchy, thoughtfully arranged.</strong><br>
+  An opinionated window manager experience for Omarchy: pages, Exposé, a drawer
+  for minimized windows, gestures that follow your fingers, and keys your hands
+  already know.
 </p>
 
 <p align="center">
@@ -26,54 +19,143 @@
 </p>
 
 <p align="center">
+  <a href="#whats-in-the-box">What's in the box</a> ·
+  <a href="#principles">Principles</a> ·
+  <a href="#where-its-going">Where it's going</a> ·
   <a href="#install">Install</a> ·
-  <a href="#keys">Keys</a> ·
-  <a href="#trackpad">Trackpad</a> ·
-  <a href="#how-it-works">How it works</a>
+  <a href="#docs">Docs</a>
 </p>
 
-Omarchy already gives you ⌘C, ⌘V and ⌘X. This adds the rest of what a Mac
-user's hands reach for without thinking: select all, undo and redo, new tab, the
-address bar, ⌘ and ⌥ arrows that move the caret, a ⌘W that closes the tab rather
-than the window, and a ⌘V that pastes screenshots into Claude Code. Then the
-trackpad scrolls the right way and workspaces swipe like they do on a Mac.
+Omarchy is a great base: fast, keyboard-first and beautifully put together.
+Bento is one opinionated take on how working in it should *feel*. Each window
+has its place, you move between places by gesture, nothing you put away gets
+lost, and the system answers your hands without a delay you can notice.
 
-- **⌘ + letter.** Twelve Mac shortcuts, each sent to the app as Ctrl + the same letter.
-- **Mac caret movement.** ⌘ arrows to line and document ends, ⌥ arrows by word, ⇧ to select.
-- **Tab-aware ⌘W.** Closes the tab, and the window once there is no tab left to close.
-- **Image paste in terminals.** ⌘V sends Ctrl+V when the clipboard holds an image.
-- **Mac menu symbols.** ⌘K lists every shortcut as `⇧⌘↩`, not `SUPER SHIFT + RETURN`.
-- **Workspace swipes that feel like a Mac.** A three-finger flick switches, a slow drag peeks and snaps back, and either way it slides home in 180 ms.
-- **Natural scrolling.** Content follows your fingers.
+Bento started as Mac keybindings for Omarchy (it was called **omac**). The keys
+are still here, but the project is bigger now: it is about the whole
+interaction model, meaning how windows, workspaces, gestures and the bar fit
+together, with the best of macOS and iPadOS as reference points rather than as
+the goal.
 
-Everything binds in one Lua file, [`hypr/omac.lua`](hypr/omac.lua), so what a
-key does is one search away, and removing the file removes all of it.
+![Pages in the Omarchy bar](docs/images/pages.png)
+
+## What's in the box
+
+Every piece can be switched off or tuned in the Bento app: run `bento`, press
+⌃⌘, or find **Bento** in the app launcher.
+
+- **Pages.** Workspaces become an ordered row of pages, shown as dots in the
+  bar. Hover a dot for a live preview and slide along the dots to flip through
+  them. ⌃2 is always the second dot, whatever the workspace id is. Empty pages
+  disappear, and you can swipe past either end for a new one. When a page's
+  last window closes, the next page slides in.
+- **Exposé.** Pinch with thumb and three fingers, or press ⌃↑ or Mission
+  Control, to zoom out to every page as a true miniature of your monitor, along
+  with the scratchpad and your minimized windows. Click or arrow to anything.
+  Spread your fingers to show the desktop.
+- **The drawer.** ⌘M minimizes. Swipe down, or press ⌃↓, and minimized windows
+  drop in as live cards, like the iPad app switcher. Click one to bring it back,
+  or flick it up to close it.
+- **Gestures.** Three- or four-finger swipes move between pages and follow your
+  fingers: a flick switches, a slow drag peeks. Swipe up for the scratchpad and
+  down for the drawer. Scrolling is natural.
+- **Keys.** ⌘ sends Ctrl at the keyboard layout, so every app gets its native
+  shortcuts and Omarchy lives on ⌃. You also get Mac text editing, a ⌘W that
+  closes the tab before the window, ⌘Q, ⌘Tab, Option characters and the Magic
+  Keyboard's top row. The full map, with the reasoning, is in
+  [`docs/keymap.md`](docs/keymap.md).
+- **Ghostty.** Ghostty behaves the way it does on macOS: ⌘C/⌘V (images
+  included), tabs, splits, and ⌃ + letter as real control characters.
+- **The Bento app.** One window with a pane per area and a row per setting.
+  Changes apply as soon as you make them. If Hyprland rejects a change, Bento
+  puts the previous settings back, so a bad setting can't leave you with a
+  broken desktop.
+
+![Hovering a dot previews the page](docs/images/pages-hover.png)
+
+## Principles
+
+These decide what goes into Bento and what stays out.
+
+1. **Direct manipulation.** If your fingers start it, the screen follows them.
+   Animations finish what your hand began, and they are short and
+   interruptible.
+2. **Places, not numbers.** You think in "the page to the right", not in
+   workspace 1004. Positions are stable and ids stay out of sight.
+3. **Nothing gets lost.** Minimized, scratchpad, off-screen: everything shows
+   up in Exposé, and everything is one gesture away.
+4. **Native first.** Apps get the keys they expect. Bento translates only where
+   Linux and Mac habits disagree, and it protects terminals.
+5. **Opinionated, not locked in.** Strong defaults, each with a switch.
+   Removing Bento gives you back stock Omarchy.
+6. **Never break the desktop.** Every change is validated and rolled back if
+   Hyprland complains. A failing module doesn't take the others down with it.
+7. **Readable.** Everything lives in a few Lua and QML files you can search.
+   Behaviour lives in Hyprland, and interface in the Omarchy shell.
+
+## Where it's going
+
+Bento's aim is a desktop that feels designed as a whole, from the first
+keypress to the last pixel of an animation. These are directions, not promises:
+
+- **Gestures that track all the way.** Exposé and the drawer should follow your
+  fingers continuously, the way page swipes already do, instead of opening once
+  the gesture ends. This probably needs a small Hyprland plugin.
+- **Window arrangement as a first-class idea.** Snap, split and resize with
+  gestures and keys that make sense together. Bento layouts would remember
+  where things go.
+- **A real app switcher.** ⌘Tab with app icons, live previews and per-app
+  window cycling.
+- **Exposé as a workbench.** Drag windows between pages, reorder pages, and
+  drag a window into the drawer to minimize it.
+- **Motion with one feel.** Shared timing and easing across pages, Exposé, the
+  drawer and the bar, so everything moves as one system.
+- **Fewer rough edges in apps.** VS Code's integrated terminal keys, browser
+  back and forward on two fingers, and anything else that breaks the illusion.
+
+Ideas and rough edges are welcome as issues.
 
 ## Install
 
-Needs Omarchy 4 or newer, the release that configures Hyprland in Lua.
+Bento needs Omarchy 4 or newer (the release that configures Hyprland in Lua).
 
 ```bash
-omarchy plugin add https://github.com/nchudleigh/omac --enable
+omarchy plugin add https://github.com/benjaminsehl/bento --enable
 ```
 
-The plugin runs [`install.sh`](install.sh) from its folder every time the shell
-starts: the first run hooks the bindings into Hyprland, and later runs find
-everything in place and do nothing. If something stops it, such as an Omarchy
-without the Lua config, a desktop notification says why.
+The plugin runs [`install.sh`](install.sh) each time the shell starts. The
+first run hooks Bento into Hyprland, and later runs find everything in place
+and do nothing. If something stops it, a desktop notification says why.
 
-`install.sh` also works on its own from any checkout of this repo, and points
-Hyprland back at that checkout, so editing it and running `hyprctl reload` is the
-whole update.
+`install.sh` also works from any checkout of this repo and points everything at
+that checkout, so to update you edit the files and run `hyprctl reload`.
+Re-run `install.sh` after changing `xkb/`.
+
+The Magic Keyboard's Mac top row (media keys without fn) is a separate,
+root-level change: `sudo system/apple-fnmode.sh`.
+
+### Coming from omac
+
+Bento is omac renamed. `install.sh` removes omac's hooks, links and launcher
+entry, moves `~/.config/omac` to `~/.config/bento`, and moves the page dots in
+the bar to the new plugin id. Afterwards, disable the old plugin:
+
+```bash
+omarchy plugin disable io.github.benjaminsehl.omac
+```
 
 <details>
 <summary>What the installer touches</summary>
 
 | Path | What it is |
 |---|---|
-| `~/.local/state/omarchy/toggles/hypr/omac.lua` | One line that loads `hypr/omac.lua` from the checkout |
-| `~/.local/bin/mac-keybindings` | Link to `bin/mac-keybindings`, the ⌘K list |
-| `~/.local/bin/mac-paste` | Link to `bin/mac-paste`, the terminal half of ⌘V |
+| `~/.local/state/omarchy/toggles/hypr/bento.lua` | One line that loads `hypr/bento.lua` from the checkout |
+| `~/.local/state/bento/` | Compiled keymaps, and errors from the last reload |
+| `~/.local/bin/bento`, `bento-apply`, `mac-keybindings` | Links into `bin/` |
+| `~/.local/share/applications/bento.desktop` | The Bento app, in the launcher |
+| `~/.config/bento/settings.json` | Your settings: only what differs from [`defaults.json`](defaults.json) |
+| `~/.config/omarchy/shell.json` | Page dots in place of Omarchy's workspace numbers (if on) |
+| `~/.config/ghostty/config` | One `config-file` line for Bento's Ghostty keys (if on) |
 
 Nothing is written to `~/.config/hypr` or `/usr/share/omarchy`.
 
@@ -81,147 +163,38 @@ Nothing is written to `~/.config/hypr` or `/usr/share/omarchy`.
 
 ## Remove
 
-Installed as a plugin, run the uninstaller first, or the plugin hooks omac back
-in on the next shell start:
+Run the uninstaller first, or the plugin hooks Bento back in the next time the
+shell starts:
 
 ```bash
-~/.config/omarchy/plugins/io.github.nchudleigh.omac/uninstall.sh
-omarchy plugin remove io.github.nchudleigh.omac
+~/.config/omarchy/plugins/io.github.benjaminsehl.bento/uninstall.sh
+omarchy plugin remove io.github.benjaminsehl.bento
 ```
 
-Run from a checkout of your own, use that checkout's `uninstall.sh`.
+This puts Omarchy's own bindings and workspace numbers back. Your settings stay
+in `~/.config/bento`.
 
-The uninstaller removes the three paths above and reloads Hyprland, which puts
-Omarchy's own bindings back.
+## Docs
 
-## Keys
+- [`docs/keymap.md`](docs/keymap.md): every key and gesture, what it replaced, and why.
+- [`docs/pages.md`](docs/pages.md): pages, Exposé and the drawer in detail.
+- [`defaults.json`](defaults.json) and [`prefs/Schema.js`](prefs/Schema.js): every setting.
 
-Super is ⌘. On a Mac keyboard that is already the key beside Space; on a PC
-keyboard it is the Windows key, unless you [move it](#putting--next-to-space).
+### How it fits together
 
-| Keys | Does |
+| Part | Lives in |
 |---|---|
-| ⌘A | Select all |
-| ⌘Z / ⌘⇧Z / ⌘Y | Undo / redo / redo, Windows-style |
-| ⌘B ⌘I ⌘U | Bold, italic, underline |
-| ⌘N | New |
-| ⌘T | New tab |
-| ⌘L | Address bar |
-| ⌘R | Reload |
-| ⌘D | Duplicate, or bookmark in a browser |
-| ⌘E | Search or edit, depending on the app |
-| ⌘← / ⌘→ | Line start / line end |
-| ⌘↑ / ⌘↓ | Document start / document end |
-| ⇧⌘ + arrow | Select to the same place |
-| ⌥← / ⌥→ | Word back / word forward, ⇧ to select |
-| ⌘[ / ⌘] | Back / forward |
-| ⇧⌘[ / ⇧⌘] | Previous tab / next tab |
-| ⌘W | Close tab, then the window |
-| ⌘Q | Close window |
-| ⌘V | Paste, images included |
-| ⌘K | Keybindings, in Mac menu symbols |
-| ⇧⌥3 / ⇧⌥4 | Screenshot the screen / an area or window |
-| ⌃⇧⌥3 / ⌃⇧⌥4 | The same, to the clipboard only |
-| ⇧⌥5 | Capture menu: screenshot, recording, text, colour |
-
-Some of these keys held Omarchy window bindings, which move to Ctrl+Alt rather
-than disappearing:
-
-| Omarchy action | Was | Now |
-|---|---|---|
-| Toggle floating/tiling | Super+T | Ctrl+Alt+T |
-| Toggle workspace layout | Super+L | Ctrl+Alt+L |
-| Focus window by direction | Super+arrows | Ctrl+Alt+arrows |
-| Swap window by direction | Super+Shift+arrows | Ctrl+Alt+Shift+arrows |
-
-⌥← and ⌥→ take Alt+arrow, which browsers use for back and forward, so ⌘[ and ⌘]
-do that instead, as on a Mac.
-
-Screenshots use ⌥ where a Mac uses ⌘, because Super+Shift+number moves windows
-between workspaces. As on a Mac, a capture saves a file and shows a thumbnail
-you can click to mark up; it also lands on the clipboard.
-
-### In terminals
-
-The ⌘-letter keys do nothing in a terminal. Ctrl+Z suspends a job, Ctrl+D closes
-the shell and Ctrl+A moves to the start of the line, so sending them would be
-worse than doing nothing. ⌘← and ⌘→ still work there, as Home and End, and ⌥←
-and ⌥→ still move by word, because bash reads Ctrl+arrow as a word move. "Terminal" means Omarchy's own `terminal` window tag,
-the same one its clipboard bindings use.
-
-⌘W closes the terminal window, because Ctrl+W there deletes a word. ⌘V pastes
-text with Shift+Insert, as Omarchy does, unless the clipboard holds an image:
-then it sends Ctrl+V, which is what Claude Code and other terminal apps read an
-image on. The clipboard check runs in its own process, `bin/mac-paste`, and gives
-up after half a second. It never runs inside Hyprland's config: `wl-paste` needs
-Hyprland to answer, so waiting on it from there freezes the whole desktop.
-
-### How ⌘W knows
-
-Hyprland cannot see an app's tabs, so ⌘W sends Ctrl+W and looks again 300 ms
-later. A closed tab changes the window title; a closed last tab, or an
-unsaved-changes dialog, moves focus. Same window, same title means nothing
-closed, and then it closes the window.
-
-Browsers skip the second look. They close the window on the last tab themselves,
-and two tabs called "New Tab" would otherwise read as nothing closing. The same
-can happen in any other app with two identically titled tabs: ⌘W closes the
-window instead of one of them.
-
-### Putting ⌘ next to Space
-
-On a PC keyboard, [`extras/keyd/mac-modifiers.conf`](extras/keyd/mac-modifiers.conf)
-swaps Left Alt and the Windows key with [keyd](https://github.com/rvaiya/keyd), so
-⌘ lands where a Mac keeps it:
-
-```bash
-omarchy pkg add keyd
-sudo cp extras/keyd/mac-modifiers.conf /etc/keyd/default.conf
-sudo systemctl enable --now keyd
-```
-
-It is not part of the install, because it changes every keyboard on the machine
-and is wrong for an Apple one.
-
-## Trackpad
-
-| Gesture | Does |
-|---|---|
-| Two fingers | Scroll, naturally: content follows your fingers |
-| Three fingers sideways | Move between workspaces, following your fingers. A quick flick switches; a slow drag peeks and snaps back unless it passes halfway |
-
-When you let go, the workspace slides the rest of the way with an ease-out cubic in 180 ms. Omarchy ships workspace animations off, so this also animates Super+1–9.
-
-Two fingers can never be a gesture here. libinput reads two fingers as scrolling
-and only three or more as a swipe, so nothing in Hyprland ever sees a two-finger
-swipe.
-
-## How it works
-
-Omarchy loads `~/.local/state/omarchy/toggles/hypr/` after your own
-`~/.config/hypr/bindings.lua`, so the bindings here win where both claim a key,
-and every key they take over is released with `hl.unbind` first rather than left
-to fire twice.
-
-The file in that directory is one `dofile` line rather than a symlink, because
-Omarchy lists the directory with `find -type f`, which skips symlinks.
-
-## Deliberately absent
-
-- **⌘Tab app switching.** Super+Tab stays Omarchy's workspace switcher. Moving
-  workspace cycling to Super+Alt+Tab collides with Omarchy's next-window-in-group.
-- **⌘F, ⌘S, ⌘P, ⌘O, ⌘G.** Each holds an Omarchy window binding (full screen,
-  scratchpad and so on) that people use daily. Copy the ⌘T pattern in the Lua
-  file to take one.
-- **Caps Lock as Caps Lock.** Omarchy makes it Compose, and the obvious fix, Compose
-  on right ⌘, breaks anything bound to that key.
-- **Media keys first on the top row.** That needs Apple's `hid_apple` driver and a
-  root-owned file.
+| Keys, gestures, page logic | `hypr/*.lua`, loaded by `hypr/bento.lua` through an Omarchy toggle |
+| Keyboard layout (⌘/⌃ swap, Option) | `xkb/symbols/bento`, compiled by `install.sh` |
+| Bar dots and previews | `pages/` (an Omarchy shell bar widget) |
+| Exposé, the drawer, the Bento app | `expose/`, `drawer/`, `prefs/`, behind one overlay (`Overlay.qml`) |
+| Settings and applying them | `defaults.json`, `Settings.qml`, `hypr/settings.lua`, `bin/bento-apply` |
 
 ## Credits
 
-Thanks to [Macifier](https://github.com/omeganter/macifier) by **Alvaro
-Antolinez**, where this started. Its ⌘-letter shortcuts, the rule that keeps them
-out of terminals, and the idea of a keybindings list in Mac terms shaped the first
-version here. If you want a dock, a ⌘Tab switcher and a bar panel to flip it all,
-Macifier has them.
+Bento is a fork of [omac](https://github.com/nchudleigh/omac) by **Neil
+Chudleigh**, which got Mac navigation working on Omarchy in the first place.
+omac in turn started from [Macifier](https://github.com/omeganter/macifier) by
+**Alvaro Antolinez**.
+
+MIT licensed.

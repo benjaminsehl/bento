@@ -204,7 +204,7 @@ return function(lib, S)
   end
 
   -- --------------------------------------------------------- number keys
-  -- SUPER + N (⌃N with omac's keys) goes to the Nth dot. A number past the
+  -- SUPER + N (⌃N with Bento's keys) goes to the Nth dot. A number past the
   -- last dot opens a new, empty page at the end.
   if not P.numberKeys then return end
 

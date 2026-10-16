@@ -5,8 +5,8 @@ import qs.Ui
 import ".."
 import "Schema.js" as Schema
 
-// The omac app: one window, a sidebar of panes, and one row per setting.
-// Changes save and apply right away (bin/omac-apply); if Hyprland rejects
+// The Bento app: one window, a sidebar of panes, and one row per setting.
+// Changes save and apply right away (bin/bento-apply); if Hyprland rejects
 // one, the previous settings come back and the error shows at the bottom.
 Item {
   id: root
@@ -17,7 +17,7 @@ Item {
   property bool closingFromHost: false
   property string pane: "keyboard"
 
-  readonly property string pluginId: (manifest && manifest.id) || "io.github.benjaminsehl.omac"
+  readonly property string pluginId: (manifest && manifest.id) || "io.github.benjaminsehl.bento"
   readonly property var currentPane: {
     for (var i = 0; i < Schema.panes.length; i++) if (Schema.panes[i].id === pane) return Schema.panes[i]
     return Schema.panes[0]
@@ -63,7 +63,7 @@ Item {
 
   FloatingWindow {
     id: window
-    title: "omac"
+    title: "Bento"
     visible: false
     color: Color.background
     implicitWidth: 860
@@ -105,7 +105,7 @@ Item {
         id: appName
         x: Style.spacing.panelPadding
         y: Style.spacing.panelPadding
-        text: "omac"
+        text: "Bento"
         color: root.fg
         font.family: Style.font.family
         font.pixelSize: Style.font.heading
@@ -337,7 +337,7 @@ Item {
       Text {
         width: parent.width
         wrapMode: Text.WordWrap
-        text: "Omarchy, the Mac way: Mac keys, pages instead of numbered workspaces, Exposé, and the trackpad gestures to go with them. Each feature can be switched off on its own."
+        text: "Omarchy, thoughtfully arranged. Pages instead of numbered workspaces, Exposé, a drawer for minimized windows, Mac-grade keys and trackpad gestures that follow your fingers. Each piece can be switched off on its own."
         color: root.fg
         font.family: Style.font.family
         font.pixelSize: Style.font.title
@@ -364,8 +364,8 @@ Item {
           onClicked: Quickshell.execDetached([Quickshell.env("HOME") + "/.local/bin/mac-keybindings"])
         }
         Button {
-          text: "github.com/benjaminsehl/omac"
-          onClicked: Quickshell.execDetached(["xdg-open", "https://github.com/benjaminsehl/omac"])
+          text: "github.com/benjaminsehl/bento"
+          onClicked: Quickshell.execDetached(["xdg-open", "https://github.com/benjaminsehl/bento"])
         }
       }
     }
