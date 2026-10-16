@@ -61,6 +61,20 @@ function lib.fingers(setting)
   return out
 end
 
+-- ---------------------------------------------------------- the shell
+-- Bento's shell side (Overlay.qml) moves the drawer, the scratchpad and
+-- Overview with your fingers. It sends a heartbeat every 10 seconds; while
+-- it's fresh, Hyprland hands gestures and these keys to it as events
+-- (custom>>bento>>...). Without it, Hyprland does them itself.
+function lib.shell_alive()
+  local seen = _G.bento_shell_seen
+  return seen ~= nil and os.time() - seen < 25
+end
+
+function lib.emit(message)
+  hl.dispatch(hl.dsp.event("bento>>" .. message))
+end
+
 -- ----------------------------------------------------- hidden workspaces
 -- The scratchpad and "minimized" are special workspaces. Showing one hides
 -- whichever is open first. Listeners in lib.on_special_change run after.
@@ -76,7 +90,25 @@ function lib.open_special()
   return ws and ws.name and (ws.name:gsub("^special:", "")) or nil
 end
 
+-- Omarchy's own animation for hidden workspaces (default/hypr/looknfeel.lua),
+-- put back after an instant switch.
+local special_animation = { leaf = "specialWorkspace", enabled = true, speed = 3, bezier = "easeOutQuint", style = "slidevert" }
+
+-- Show or hide a hidden workspace in one frame. The shell calls this when its
+-- stand-in for the scratchpad comes to rest, so the real one takes over with
+-- no animation of its own.
+function lib.special_now(name, show)
+  local open = lib.open_special()
+  if show == (open == name) then return end
+  hl.animation({ leaf = "specialWorkspace", enabled = false })
+  if show and open then hl.dispatch(hl.dsp.workspace.toggle_special(open)) end
+  hl.dispatch(hl.dsp.workspace.toggle_special(name))
+  hl.timer(function() hl.animation(special_animation) end, { timeout = 120, type = "oneshot" })
+  changed()
+end
+
 function lib.show_special(name)
+  if name == "scratchpad" and lib.shell_alive() then return lib.emit("scratchpad>>show") end
   local open = lib.open_special()
   if open == name then return end
   if open then hl.dispatch(hl.dsp.workspace.toggle_special(open)) end
@@ -86,11 +118,13 @@ end
 
 function lib.hide_special()
   local open = lib.open_special()
+  if open == "scratchpad" and lib.shell_alive() then return lib.emit("scratchpad>>hide") end
   if open then hl.dispatch(hl.dsp.workspace.toggle_special(open)) end
   changed()
 end
 
 function lib.toggle_scratchpad()
+  if lib.shell_alive() then return lib.emit("scratchpad>>toggle") end
   if lib.open_special() == "scratchpad" then lib.hide_special() else lib.show_special("scratchpad") end
 end
 
@@ -100,11 +134,13 @@ end
 function lib.view() return _G.bento_view end
 
 function lib.show(view)
+  if lib.shell_alive() then return lib.emit("show>>" .. view) end
   _G.bento_view = view
   hl.exec_cmd("omarchy-shell shell summon " .. lib.plugin .. " '{\"view\":\"" .. view .. "\"}'")
 end
 
 function lib.hide_overlay()
+  if lib.shell_alive() then return lib.emit("hide") end
   _G.bento_view = nil
   hl.exec_cmd("omarchy-shell shell hide " .. lib.plugin)
 end

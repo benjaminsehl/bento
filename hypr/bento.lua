@@ -12,7 +12,9 @@ local repo = _G.bento_repo or here:match("^(.*)/hypr/[^/]+$") or "."
 local S = dofile(repo .. "/hypr/settings.lua")(repo)
 local lib = dofile(repo .. "/hypr/lib.lua")
 lib.repo = repo
-_G.bento = { repo = repo, settings = S }
+-- The shell reaches in here too: Overlay.qml hands the scratchpad over to
+-- Hyprland with special_now when its stand-in comes to rest.
+_G.bento = { repo = repo, settings = S, special_now = lib.special_now }
 
 -- Order matters: keyboard.lua re-registers Omarchy's Alt bindings on ⌥
 -- before pages.lua and windows.lua replace some of them, and windows.lua uses
@@ -33,6 +35,11 @@ end
 if #errors > 0 then
   hl.exec_cmd("notify-send -u critical 'Bento' " .. string.format("%q", table.concat(errors, "\n")))
 end
+
+-- Bento's surfaces (Overview, the drawer, the scratchpad) move themselves.
+-- Hyprland fading them in and out on top of that shows as flicker, so don't,
+-- as Omarchy does for its own (default/hypr/apps/omarchy-shell.lua).
+hl.layer_rule({ match = { namespace = "^bento-" }, no_anim = true, animation = "none" })
 
 -- The Bento app: a floating window, centred.
 hl.window_rule({ match = { title = "^Bento$" }, float = true, center = true, size = { 860, 600 } })

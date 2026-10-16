@@ -270,14 +270,15 @@ Both trackpads. Finger counts as on a Mac set to four-finger Spaces.
 | Three or four fingers sideways | Switch page, following your fingers; past the last or first dot, a new empty page | Swipe between Spaces |
 | Three or four fingers up | Show the scratchpad; closes the drawer if it's open | — |
 | Three or four fingers down | Minimized-windows drawer (only when something is minimized); hides the scratchpad or Overview if open | App Exposé |
-| Pinch thumb + three fingers | Overview; when the desktop is showing, bring the windows back | Mission Control |
-| Spread thumb + three fingers | Show desktop (the empty page left of the first); again to come back | Show Desktop |
+| Pinch three or four fingers | Overview, zooming out as your fingers close; when the desktop is showing, bring the windows back | Mission Control |
+| Spread three or four fingers | Over Overview, zoom back in as your fingers open; otherwise show desktop (the empty page left of the first), again to come back | Show Desktop |
 
 Every gesture can be switched off, and the finger counts changed, in the Bento
 app's Trackpad pane.
 
-Tested: a pinch fires Hyprland's `pinchout` (the gesture's scale goes below 1),
-a spread `pinchin`. libinput only processes gestures of up to four fingers
+Tested: a pinch's scale goes below 1 (Hyprland calls it `pinchout`), a spread's
+above (`pinchin`). Bento takes both as one `pinch` gesture and streams the scale
+to the shell, so Overview follows the fingers. libinput only processes gestures of up to four fingers
 (`tp_gesture_handle_state` runs for `finger_count <= 4`), so five-finger
 gestures never reach Hyprland.
 

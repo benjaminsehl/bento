@@ -4,6 +4,7 @@ import Quickshell.Wayland
 import Quickshell.Hyprland
 import QtQuick
 import qs.Commons
+import "../motion/Motion.js" as Motion
 
 // The minimized-window drawer, as a strip of cards: minimized windows
 // (⌘M puts them on the hidden "special:minimized" workspace) shrink into
@@ -15,16 +16,21 @@ import qs.Commons
 //   ← →              choose a card
 //   Esc / click away close the drawer
 //
-// Hyprland opens it (three or four fingers down; ⌃↓ with Bento). Overlay.qml
-// tells Hyprland when it's open, so fingers up can close it again.
+// It hangs from the top of Bento's vertical axis (places/Axis.qml): fingers
+// pull it down and push it back, and ⌃↓ runs the same motion. Its position is
+// the axis value, so it is wherever your fingers put it.
 Item {
   id: root
 
   property var shell: null
   property var manifest: null
 
-  property bool opened: false
-  property bool shown: false
+  // The axis that positions the drawer (set by Overlay.qml).
+  property var axis: null
+  readonly property real progress: axis ? axis.drawer : 0
+  // On screen at all, and settled open (keys go to it).
+  readonly property bool opened: root.progress > 0.0005
+  readonly property bool engaged: !!axis && !axis.dragging && axis.target === 1
   property int selectedIndex: 0
   property var cards: []
 
@@ -43,7 +49,7 @@ Item {
   function refresh() {
     root.cards = minimizedToplevels()
     if (root.selectedIndex >= root.cards.length) root.selectedIndex = Math.max(0, root.cards.length - 1)
-    if (root.opened && root.cards.length === 0) root.dismiss()
+    if (root.engaged && root.cards.length === 0) root.dismiss()
   }
 
   function address(t) {
@@ -55,30 +61,23 @@ Item {
     Hyprland.refreshToplevels()
     Hyprland.refreshWorkspaces()
     root.selectedIndex = 0
-    root.cards = minimizedToplevels()
-    root.opened = true
-    Qt.callLater(function() {
-      root.shown = true
-      keyCatcher.forceActiveFocus()
-    })
+    root.refresh()
+    if (root.cards.length && root.axis) root.axis.to(1)
   }
 
+  // Back up out of sight, if the drawer is what's showing.
   function close() {
-    root.shown = false
-    root.opened = false
+    if (root.axis && root.axis.target > 0) root.axis.to(0)
   }
 
-  // Slide up and away, then let the host unload us.
-  function dismiss() {
-    if (!root.opened) return
-    root.shown = false
-    closeTimer.restart()
-  }
+  function dismiss() { root.close() }
 
   function toggle() {
-    if (root.opened) root.dismiss()
+    if (root.axis && root.axis.target > 0) root.dismiss()
     else root.open("{}")
   }
+
+  onEngagedChanged: if (root.engaged) keyCatcher.forceActiveFocus()
 
   function restore(t) {
     if (!t) return
@@ -96,15 +95,6 @@ Item {
     refreshTimer.restart()
   }
 
-  Timer {
-    id: closeTimer
-    interval: 200
-    onTriggered: {
-      root.opened = false
-        if (root.shell && typeof root.shell.hide === "function") root.shell.hide(root.pluginId)
-    }
-  }
-
   // Closing a window takes a moment to show up in Hyprland's list.
   Timer {
     id: refreshTimer
@@ -114,7 +104,7 @@ Item {
 
   Connections {
     target: Hyprland.toplevels
-    function onValuesChanged() { if (root.opened) root.refresh() }
+    function onValuesChanged() { root.refresh() }
   }
 
   function focusedScreen() {
@@ -134,7 +124,7 @@ Item {
     color: "transparent"
     WlrLayershell.namespace: "bento-drawer"
     WlrLayershell.layer: WlrLayer.Overlay
-    WlrLayershell.keyboardFocus: WlrKeyboardFocus.Exclusive
+    WlrLayershell.keyboardFocus: root.engaged ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
     exclusionMode: ExclusionMode.Ignore
 
     readonly property int cardHeight: Math.round(height * 0.34)
@@ -143,8 +133,7 @@ Item {
     Rectangle {
       anchors.fill: parent
       color: Color.menu.scrim
-      opacity: root.shown ? 1 : 0
-      Behavior on opacity { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
+      opacity: Motion.clamp(root.progress, 0, 1)
     }
 
     MouseArea {
@@ -178,14 +167,35 @@ Item {
       }
     }
 
-    // The strip drops from the top, the way four fingers down opens it, and
-    // goes back up when it closes.
+    // The strip hangs above the screen and comes down as far as the axis says.
     Item {
       id: drawer
       width: parent.width
       height: panel.cardHeight + panel.labelHeight + Style.spacing.md * 2
-      y: root.shown ? Math.round((parent.height - height) / 2) : -height
-      Behavior on y { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
+      y: Motion.lerp(-height, Math.round((parent.height - height) / 2), root.progress)
+
+      // Nothing minimized: say so, as the pull gives and springs back.
+      Rectangle {
+        visible: root.cards.length === 0
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.bottom: parent.bottom
+        width: emptyLabel.implicitWidth + Style.spacing.lg * 2
+        height: emptyLabel.implicitHeight + Style.spacing.md * 2
+        radius: height / 2
+        color: Color.menu.background
+        border.width: 1
+        border.color: Color.menu.border
+        opacity: Math.min(1, root.progress / (Motion.pull.rubberLimit * 0.5))
+
+        Text {
+          id: emptyLabel
+          anchors.centerIn: parent
+          text: "Nothing is minimized"
+          color: Color.menu.text
+          font.family: Style.font.menuFamily
+          font.pixelSize: Style.font.body
+        }
+      }
 
       ListView {
         id: strip

@@ -26,7 +26,10 @@ Every transition is either a camera move or an object moving on this map.
   Reverse halfway and it goes back. Let go fast and it carries on; let go
   slowly and it settles to whichever side is nearer.
 - **Push up: the scratchpad rises from below, the same way.** Up and down are
-  one gesture, so you can change your mind within one movement.
+  one gesture, but a gesture stays on one side: pushing an open drawer up
+  closes it and stops, and it never carries on into the scratchpad.
+- **The scratchpad is modal.** While it's up, the page underneath can't take a
+  click or focus. A click outside its windows puts it away.
 - **Pinch: the camera pulls back.** Pinch scale maps directly to zoom. The page
   you're on starts full-screen and shrinks into its slot while the others slide
   in beside it.
@@ -98,3 +101,13 @@ Each slice is felt on the real trackpad and tuned before moving on.
 
 Record what each round of trying it on the trackpad teaches us here: distances,
 spring stiffness, velocity thresholds, rubber-band resistance.
+
+- **Round 1 (2026-10-16).** A full pull of 320 trackpad units felt too long in
+  both directions; now 240. Crossing from the drawer straight into the
+  scratchpad in one swipe felt wrong; zero is now a wall.
+- **Round 2 (2026-10-16).** Overview follows the pinch. Measured at 120 fps
+  once moving, but a window made when the fingers land took 65–90 ms to show
+  its first frame, so the zoom started late and jumped. Overview's window now
+  stays mapped, empty and click-through, between uses: from fingers to the
+  first picture is now about 20–30 ms. libinput sometimes takes a pinch for a
+  swipe down; that's its call, before Bento sees anything.

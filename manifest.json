@@ -11,6 +11,7 @@
     "overlay",
     "bar-widget"
   ],
+  "keepLoaded": true,
   "entryPoints": {
     "service": "Service.qml",
     "overlay": "Overlay.qml",
