@@ -4,13 +4,21 @@ import Quickshell
 import Quickshell.Hyprland
 import qs.Commons
 import qs.Ui
+import ".."
 
 // Page dots: one dot per existing workspace. Hyprland destroys empty
 // workspaces when you leave them, so empty pages simply vanish. The focused
-// page is always shown (even if empty) as a wider, brighter pill.
+// page is always shown (even if empty) as a wider, brighter pill. Hover a dot
+// for a live preview of that page. Sizes and previews come from omac's
+// settings (the "pages" section).
 BarWidget {
   id: root
-  moduleName: "io.github.benjaminsehl.pages"
+  moduleName: "io.github.benjaminsehl.omac"
+
+  Settings { id: settings }
+  readonly property bool previewsOn: settings.get("pages", "previews") !== false
+  readonly property int previewDelay: Number(settings.get("pages", "previewDelay")) || 250
+  readonly property real previewWidth: Number(settings.get("pages", "previewWidth")) || 260
 
   readonly property int focusedId: Hyprland.focusedWorkspace ? Hyprland.focusedWorkspace.id : -1
   readonly property string backgroundSource: "file://" + Quickshell.env("HOME") + "/.local/state/omarchy/current/background"
@@ -40,9 +48,9 @@ BarWidget {
     root.bar.run("hyprctl dispatch " + Util.shellQuote("hl.dsp.focus({ workspace = \"" + id + "\" })"))
   }
 
-  readonly property real dotSize: Style.spaceReal(4)
+  readonly property real dotSize: Style.spaceReal(Number(settings.get("pages", "dotSize")) || 4)
   readonly property real pillLength: dotSize * 2.4
-  readonly property real slot: Style.spaceReal(11)
+  readonly property real slot: Math.max(Style.spaceReal(11), dotSize * 2.75)
   readonly property real trailingGap: root.vertical ? 0 : Style.spaceReal(1.5)
 
   implicitWidth: row.implicitWidth + trailingGap
@@ -73,17 +81,18 @@ BarWidget {
         Component.onDestruction: if (previewOpen) root.openPreviews -= 1
         onHoveringChanged: {
           if (!hovering) { hoverDelay.stop(); previewOpen = false }
-          else if (!focused) { if (root.previewWarm) previewOpen = true; else hoverDelay.restart() }
+          else if (!focused && root.previewsOn) { if (root.previewWarm) previewOpen = true; else hoverDelay.restart() }
         }
         onFocusedChanged: if (focused) { hoverDelay.stop(); previewOpen = false }
 
-        Timer { id: hoverDelay; interval: 250; onTriggered: page.previewOpen = page.hovering && !page.focused }
+        Timer { id: hoverDelay; interval: root.previewDelay; onTriggered: page.previewOpen = page.hovering && !page.focused }
 
         PagePreview {
           anchorItem: page
           bar: root.bar
           workspaceId: page.modelData
           backgroundSource: root.backgroundSource
+          previewWidth: Style.space(root.previewWidth)
           open: page.previewOpen
         }
         fixedWidth: root.vertical ? root.barSize : (focused ? root.pillLength + root.slot - root.dotSize : root.slot)

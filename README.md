@@ -1,8 +1,11 @@
-> **This fork is being reworked.** It swaps ⌘ and ⌃ at the keyboard layout,
-> so apps get native Ctrl shortcuts and Omarchy lives on ⌃. The current key map
-> is [`docs/keymap.md`](docs/keymap.md); the README below is still upstream's
-> and partly out of date. Install from a checkout with `./install.sh`; the
-> Magic Keyboard's Mac top row is `sudo system/apple-fnmode.sh`.
+> **omac is Omarchy, the Mac way.** It's opinionated and all in one plugin:
+>
+> - **Mac keys.** ⌘ sends Ctrl at the keyboard layout, so apps get native shortcuts, and Omarchy lives on ⌃. Mac text editing, ⌘W/⌘Q/⌘Tab, Option characters and the Magic Keyboard's top row. The key map is [`docs/keymap.md`](docs/keymap.md).
+> - **Pages.** Workspaces show as dots in the bar, with a live preview on hover. ⌃2 is always the second dot, empty pages disappear, and you can swipe past either end for a new one. See [`docs/pages.md`](docs/pages.md).
+> - **Exposé and the drawer.** Pinch to zoom out to every page, the scratchpad and minimized windows. ⌘M minimizes, and swiping down brings minimized windows back.
+> - **The omac app.** Switch every feature on or off and tune it: run `omac`, press ⌃⌘, or find it in the app launcher.
+>
+> Install from a checkout with `./install.sh`; the Magic Keyboard's Mac top row is `sudo system/apple-fnmode.sh`. The rest of this README is still upstream's and partly out of date.
 
 <p align="center">
   <picture>

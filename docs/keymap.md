@@ -119,8 +119,10 @@ Changed, to match macOS:
 | Keys | Does | Omarchy had |
 |---|---|---|
 | ⌃← / ⌃→ | Previous / next workspace (macOS Spaces) | focus window → ⌃⌥← → |
-| ⌃↑ | Overview (Mission Control) once the overview plugin lands; scratchpad until then | focus window up → ⌃⌥↑ |
+| ⌃↑ | Exposé (Mission Control) | focus window up → ⌃⌥↑ |
 | ⌃↓ | Minimized-windows drawer (App Exposé) | focus window down → ⌃⌥↓ |
+| ⌃1 … ⌃0 | The Nth page dot (not workspace id N); ⌃⇧ moves the window there, ⌃⇧⌥ without following | — |
+| ⌃⌘, | The omac app (preferences) | — |
 | ⌃Tab / ⌃⇧Tab | Next / previous tab in the app | next / previous workspace (⌃→ ⌃← now) |
 
 ### ⌃ + letter
@@ -246,7 +248,7 @@ Magic Keyboard top row (codes from the test):
 | Key | Sends | Does |
 |---|---|---|
 | F1 / F2 | brightness | Brightness of the focused display |
-| F3 | `KEY_SCALE` (XF86LaunchA) | Overview once the plugin lands; scratchpad until then |
+| F3 | `KEY_SCALE` (XF86LaunchA) | Exposé |
 | F4 | `KEY_SEARCH` (XF86Search) | App launcher |
 | F5 | `KEY_MICMUTE` (XF86AudioMicMute) | Dictation toggle, on the Magic Keyboard only (the Dell's mic key stays mic mute) |
 | F6 | `KEY_SLEEP` (XF86Sleep) | Do Not Disturb. Tested: it doesn't suspend the machine |
@@ -265,16 +267,19 @@ Both trackpads. Finger counts as on a Mac set to four-finger Spaces.
 | Click with two / three fingers | Right-click / middle-click | same / — |
 | Tap | Nothing: press to click | tap to click off |
 | Pinch two fingers | Zoom in the app | same |
-| Three fingers up | Show / hide the scratchpad, following your fingers | — |
-| Three or four fingers sideways | Switch workspace, following your fingers | Swipe between Spaces |
-| Four fingers up | Overview (overview plugin phase; scratchpad until then) | Mission Control |
-| Four fingers down | Minimized-windows drawer, dropping from the top (only when something is minimized); four fingers up closes it | App Exposé |
-| Pinch thumb + three fingers | App launcher; when the desktop is showing, bring the windows back | Launchpad |
-| Spread thumb + three fingers | Show desktop (empty workspace); again to come back | Show Desktop |
+| Three or four fingers sideways | Switch page, following your fingers; past the last or first dot, a new empty page | Swipe between Spaces |
+| Three or four fingers up | Show the scratchpad; closes the drawer if it's open | — |
+| Three or four fingers down | Minimized-windows drawer (only when something is minimized); hides the scratchpad or Exposé if open | App Exposé |
+| Pinch thumb + three fingers | Exposé; when the desktop is showing, bring the windows back | Mission Control |
+| Spread thumb + three fingers | Show desktop (the empty page left of the first); again to come back | Show Desktop |
 
-Tested: Hyprland's `pinchin`/`pinchout` names are the other way round from the
-gesture (spread fires `pinchin`), so the bindings swap them. Five-finger
-gestures aren't reported by these trackpads.
+Every gesture can be switched off, and the finger counts changed, in the omac
+app's Trackpad pane.
+
+Tested: a pinch fires Hyprland's `pinchout` (the gesture's scale goes below 1),
+a spread `pinchin`. libinput only processes gestures of up to four fingers
+(`tp_gesture_handle_state` runs for `finger_count <= 4`), so five-finger
+gestures never reach Hyprland.
 
 Not possible: Force Touch, look-up, Notification Centre edge swipe, two-finger
 back/forward in Chrome ❓ (Chrome may support it with a flag; not tested yet).
@@ -309,8 +314,6 @@ Any other Omarchy action losing its key is a checker failure.
 
 ## Later
 
-- **Overview (Mission Control)**: a Hyprland overview plugin on four fingers up,
-  ⌃↑ and the Magic Keyboard's F3. Its own phase after the key map works.
 - VS Code integrated terminal keys.
 
 ## Minimized-windows drawer
@@ -324,7 +327,7 @@ thumbnails on a scrollable strip, like the iPad app switcher:
 | Click a card, or ↩ | Restore that window to the current workspace |
 | Drag a card up, middle-click, or ⌫ | Close that window |
 | ← → | Choose a card |
-| Esc, click outside, four fingers up | Close the drawer |
+| Esc, click outside, fingers up | Close the drawer |
 
 It opens after the gesture rather than following the fingers. If that feels
 wrong, the next step is a Hyprland plugin that tracks the swipe.

@@ -5,13 +5,22 @@
   "version": "2.0.0-dev",
   "author": "Benjamin Sehl (fork of Neil Chudleigh's omac)",
   "license": "MIT",
-  "description": "Mac keys for Omarchy: ⌘ sends Ctrl and ⌃ sends Super at the keyboard layout, so apps get native shortcuts and Omarchy lives on ⌃. Option characters, Mac caret keys, Mac gestures, Mac-style Ghostty.",
+  "description": "Omarchy, the Mac way: Mac keys, pages as dots, Exposé, a minimized-windows drawer and Mac gestures, with an app to switch each on or off.",
   "kinds": [
     "service",
-    "overlay"
+    "overlay",
+    "bar-widget"
   ],
   "entryPoints": {
     "service": "Service.qml",
-    "overlay": "drawer/Drawer.qml"
+    "overlay": "Overlay.qml",
+    "barWidget": "pages/BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Pages",
+    "description": "Workspaces as page dots, with a live preview on hover",
+    "category": "Compositor",
+    "defaultSection": "left",
+    "allowMultiple": false
   }
 }

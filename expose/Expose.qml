@@ -21,7 +21,7 @@ Item {
   property bool opened: false
   property int selected: -1
 
-  readonly property string pluginId: (manifest && manifest.id) || "io.github.benjaminsehl.pages"
+  readonly property string pluginId: (manifest && manifest.id) || "io.github.benjaminsehl.omac"
   readonly property string backgroundSource: "file://" + Quickshell.env("HOME") + "/.local/state/omarchy/current/background"
 
   readonly property var monitor: Hyprland.focusedMonitor
@@ -300,7 +300,7 @@ Item {
     visible: root.opened || content.opacity > 0
     anchors { top: true; bottom: true; left: true; right: true }
     color: "transparent"
-    WlrLayershell.namespace: "omarchy-pages-expose"
+    WlrLayershell.namespace: "omac-expose"
     WlrLayershell.layer: WlrLayer.Overlay
     WlrLayershell.keyboardFocus: root.opened ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
     exclusionMode: ExclusionMode.Ignore

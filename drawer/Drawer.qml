@@ -5,9 +5,9 @@ import Quickshell.Hyprland
 import QtQuick
 import qs.Commons
 
-// omac's minimized-window drawer, like the iPad app switcher: minimized
-// windows (⌘M puts them on the hidden "special:minimized" workspace) shrink
-// into cards on a scrollable strip that drops from the top.
+// The minimized-window drawer, like the iPad app switcher: minimized windows
+// (⌘M puts them on the hidden "special:minimized" workspace) shrink into
+// cards on a scrollable strip that drops from the top.
 //
 //   click / ↩        restore the window to the current workspace
 //   swipe a card up,
@@ -15,8 +15,8 @@ import qs.Commons
 //   ← →              choose a card
 //   Esc / click away close the drawer
 //
-// Hyprland opens it (four fingers down, ⌃↓). The drawer tells Hyprland when
-// it's open, so four fingers up can close it again.
+// Hyprland opens it (three or four fingers down; ⌃↓ with omac). Overlay.qml
+// tells Hyprland when it's open, so fingers up can close it again.
 Item {
   id: root
 
@@ -51,18 +51,12 @@ Item {
     return a.indexOf("0x") === 0 ? a : "0x" + a
   }
 
-  function tellHyprland(open) {
-    hyprState.command = ["hyprctl", "eval", "_G.omac_drawer_open = " + (open ? "true" : "false")]
-    hyprState.running = true
-  }
-
   function open(payloadJson) {
     Hyprland.refreshToplevels()
     Hyprland.refreshWorkspaces()
     root.selectedIndex = 0
     root.cards = minimizedToplevels()
     root.opened = true
-    root.tellHyprland(true)
     Qt.callLater(function() {
       root.shown = true
       keyCatcher.forceActiveFocus()
@@ -72,7 +66,6 @@ Item {
   function close() {
     root.shown = false
     root.opened = false
-    root.tellHyprland(false)
   }
 
   // Slide up and away, then let the host unload us.
@@ -103,15 +96,12 @@ Item {
     refreshTimer.restart()
   }
 
-  Process { id: hyprState }
-
   Timer {
     id: closeTimer
     interval: 200
     onTriggered: {
       root.opened = false
-      root.tellHyprland(false)
-      if (root.shell && typeof root.shell.hide === "function") root.shell.hide(root.pluginId)
+        if (root.shell && typeof root.shell.hide === "function") root.shell.hide(root.pluginId)
     }
   }
 

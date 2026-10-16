@@ -1,0 +1,37 @@
+{
+  "keyboard": {
+    "macModifiers": true,
+    "textEditing": true,
+    "appShortcuts": true,
+    "topRow": true,
+    "dictation": true
+  },
+  "trackpad": {
+    "naturalScroll": true,
+    "tapToClick": false,
+    "swipe": true,
+    "swipeFingers": "3 and 4",
+    "swipeLock": true,
+    "pinch": true,
+    "upDown": true,
+    "upDownFingers": "3 and 4"
+  },
+  "pages": {
+    "dots": true,
+    "dotSize": 4,
+    "previews": true,
+    "previewDelay": 250,
+    "previewWidth": 260,
+    "numberKeys": true,
+    "leftEdge": true,
+    "slideOnEmpty": true,
+    "slideAnimation": true
+  },
+  "windows": {
+    "minimize": true,
+    "expose": true
+  },
+  "terminal": {
+    "ghostty": true
+  }
+}
