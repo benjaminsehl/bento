@@ -517,19 +517,19 @@ Item {
   PanelWindow {
     id: panel
     screen: root.targetScreen
-    // Always there, so a pinch doesn't wait for a window to be made. At rest
-    // it's one empty pixel in the corner that lets everything through, which
-    // the compositor has next to nothing to do for; it grows to the page when
-    // wanted, much sooner than a new window could be made.
+    // Always mapped at the page's full size, so opening neither waits for a
+    // window to be made nor resizes one. (Grown from a resting pixel, the
+    // picture was drawn into a box easing out of the top-left corner, so the
+    // zoom seemed to come from there.) At rest it's empty, lets everything
+    // through and sits on the background layer: Hyprland lets fullscreen
+    // windows scan out directly unless something is on the overlay layer.
     visible: true
     mask: Region { width: root.shown ? panel.width : 0; height: root.shown ? panel.height : 0 }
-    implicitWidth: 1
-    implicitHeight: 1
-    anchors { top: true; left: true; bottom: root.shown; right: root.shown }
+    anchors { top: true; bottom: true; left: true; right: true }
     margins { left: root.reserved[0]; top: root.reserved[1]; right: root.reserved[2]; bottom: root.reserved[3] }
     color: "transparent"
     WlrLayershell.namespace: "bento-overview"
-    WlrLayershell.layer: WlrLayer.Overlay
+    WlrLayershell.layer: root.shown ? WlrLayer.Overlay : WlrLayer.Background
     WlrLayershell.keyboardFocus: root.opened && !root.holding ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
     exclusionMode: ExclusionMode.Ignore
 
