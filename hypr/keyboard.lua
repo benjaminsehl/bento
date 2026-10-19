@@ -21,6 +21,9 @@ return function(lib, S)
   -- Keyboards not listed keep Omarchy's layout.
   local keyboards = {
     { name = "apple-inc.-magic-keyboard-with-touch-id", keymap = "apple" },
+    -- Keychron K3 Pro in Mac mode sends ⌃ ⌥ ⌘ in Apple's positions.
+    { name = "keychron-keychron-k3-pro", keymap = "apple" },
+    { name = "keychron-keychron-k3-pro-keyboard", keymap = "apple" },
     { name = "at-translated-set-2-keyboard", keymap = "pc" },
   }
   for _, k in ipairs(keyboards) do
