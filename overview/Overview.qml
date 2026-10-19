@@ -5,6 +5,7 @@ import Quickshell.Hyprland
 import Quickshell.Wayland
 import qs.Commons
 import qs.Ui
+import ".."
 import "../motion"
 import "../motion/Motion.js" as Motion
 
@@ -388,15 +389,18 @@ Item {
       dispatch("hl.dsp.window.move({ workspace = " + q(here) + ", window = " + q(addr) + " })")
     }
     if (e.kind === "page") root.zoomId = e.page
-    dispatch("hl.dsp.focus({ window = " + q(addr) + " })")
+    afterRelease.dispatch("hl.dsp.focus({ window = " + q(addr) + " })")
     dismiss()
   }
 
   function goToPage(id) {
     root.zoomId = id
-    dispatch("hl.dsp.focus({ workspace = " + q(id) + " })")
+    afterRelease.dispatch("hl.dsp.focus({ workspace = " + q(id) + " })")
     dismiss()
   }
+
+  // Where you're going waits until Overview lets go of the keyboard.
+  AfterRelease { id: afterRelease; window: content.Window.window }
 
   // The host raises the scratchpad with Bento's motion; without a host,
   // Hyprland does it.
@@ -404,7 +408,7 @@ Item {
   function openScratchpad() {
     dismiss()
     if (root.hasScratchpadHost) root.scratchpadRequested()
-    else dispatch("hl.dsp.workspace.toggle_special(\"scratchpad\")")
+    else afterRelease.dispatch("hl.dsp.workspace.toggle_special(\"scratchpad\")")
   }
   property bool hasScratchpadHost: false
 

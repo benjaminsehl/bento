@@ -4,6 +4,7 @@ import Quickshell.Wayland
 import Quickshell.Hyprland
 import QtQuick
 import qs.Commons
+import ".."
 import "../motion/Motion.js" as Motion
 
 // The minimized-window drawer, as a strip of cards: minimized windows
@@ -85,9 +86,12 @@ Item {
     var ws = monitor && monitor.activeWorkspace ? monitor.activeWorkspace.id : 1
     var a = address(t)
     Hyprland.dispatch('hl.dsp.window.move({ window = "address:' + a + '", workspace = "' + ws + '", follow = false })')
-    Hyprland.dispatch('hl.dsp.focus({ window = "address:' + a + '" })')
+    afterRelease.dispatch('hl.dsp.focus({ window = "address:' + a + '" })')
     root.dismiss()
   }
+
+  // The restored window gets the keyboard once the drawer lets go of it.
+  AfterRelease { id: afterRelease; window: keyCatcher.Window.window }
 
   function closeWindow(t) {
     if (!t) return
