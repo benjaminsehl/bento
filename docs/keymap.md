@@ -111,6 +111,7 @@ Omarchy's Super bindings, unchanged, now on ⌃:
 | ⌃, family | Notifications: dismiss, dismiss all, open last, history |
 | ⌃/ , ⌃⌫ family, ⌃− ⌃=, ⌃Home | Scaling, transparency/gaps, resize, window width |
 | ⌃-drag / ⌃-right-drag | Move / resize window |
+| Drag the handle between tiles | Resize the split (Bento; never below *Smallest tile*) |
 | ⌃-scroll | Scroll through workspaces |
 | ⌃⇧ + letter | Omarchy's app launchers: ⌃⇧X X, ⌃⇧M Spotify, ⌃⇧/ 1Password, and the rest; harmless to keep |
 

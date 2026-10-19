@@ -30,7 +30,9 @@
   },
   "windows": {
     "minimize": true,
-    "overview": true
+    "overview": true,
+    "dragResize": true,
+    "minTileSize": 320
   },
   "terminal": {
     "ghostty": true

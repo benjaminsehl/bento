@@ -21,6 +21,7 @@
   <a href="#pages">Pages</a> ·
   <a href="#overview">Overview</a> ·
   <a href="#the-drawer">Drawer</a> ·
+  <a href="#tiles">Tiles</a> ·
   <a href="#gestures">Gestures</a> ·
   <a href="#keys">Keys</a> ·
   <a href="#the-bento-app">App</a> ·
@@ -68,6 +69,13 @@ top as live cards. Click a card to bring its window back onto the page you're
 on. Flick a card up, middle-click it or press ⌫ to close the window.
 
 ![The drawer of minimized windows](docs/images/drawer.png)
+
+## Tiles
+
+Two windows on a page share it half and half. Bring the pointer to the gap
+between them and a handle appears beside it; drag the handle to split the page
+some other way, and the split stays where you leave it. A drag never makes a
+window smaller than the smallest tile size (320 px unless you change it).
 
 ## Gestures
 

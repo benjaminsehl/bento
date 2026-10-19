@@ -80,7 +80,12 @@ var panes = [
       { section: "windows", key: "minimize", type: "bool", title: "Minimize with ⌘M",
         detail: "Minimized windows wait in a drawer. Swipe down or press ⌃↓ to bring one back." },
       { section: "windows", key: "overview", type: "bool", title: "Overview",
-        detail: "Every page, the scratchpad and your minimized windows at once. Pinch, or press ⌃↑." }
+        detail: "Every page, the scratchpad and your minimized windows at once. Pinch, or press ⌃↑." },
+      { header: "Tiles" },
+      { section: "windows", key: "dragResize", type: "bool", title: "Drag to resize tiles",
+        detail: "Bring the pointer to the gap between two windows for a handle, and drag it to change how the page is split. Pages still start half and half." },
+      { section: "windows", key: "minTileSize", type: "number", min: 160, max: 800, step: 40, unit: "px", title: "Smallest tile", requires: ["windows", "dragResize"],
+        detail: "A drag can't make a window narrower or shorter than this." }
     ]
   },
   {
