@@ -63,6 +63,8 @@ var panes = [
       { header: "Moving between pages" },
       { section: "pages", key: "numberKeys", type: "bool", title: "⌃1 to ⌃0 count dots",
         detail: "⌃2 is always the second dot. ⌃⇧2 moves a window there." },
+      { section: "pages", key: "numberKey", type: "choice", options: ["⌃", "⌘"], title: "Switch with", requires: ["pages", "numberKeys"],
+        detail: "⌘ is handy with a mouse; ⌃ keeps working too. Apps lose their own ⌘1 to ⌘9, like a browser's tabs. Needs the Bento modifier layout." },
       { section: "pages", key: "leftEdge", type: "bool", title: "New page on the left",
         detail: "Swipe left past the first dot for an empty page that becomes the first." },
       { section: "pages", key: "slideOnEmpty", type: "bool", title: "Slide on when a page empties",

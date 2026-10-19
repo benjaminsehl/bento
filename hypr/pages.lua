@@ -206,6 +206,9 @@ return function(lib, S)
   -- --------------------------------------------------------- number keys
   -- SUPER + N (⌃N with Bento's keys) goes to the Nth dot. A number past the
   -- last dot opens a new, empty page at the end.
+  -- numberKey "⌘" puts switching on CTRL + N (⌘N) as well, for when there's
+  -- no trackpad to swipe with; apps lose their own ⌘1 … ⌘9 then. Moving a
+  -- window stays on ⌃⇧N, since ⌘⇧3 ⌘⇧4 ⌘⇧5 take screenshots.
   if not P.numberKeys then return end
 
   local function target(n)
@@ -231,9 +234,11 @@ return function(lib, S)
   -- With Mac modifiers nothing sends Alt: keyboard.lua moved Omarchy's Alt
   -- bindings to ⌥ (MOD5), so replace those too.
   local alt = S.keyboard.macModifiers and "MOD5" or "ALT"
+  local command = S.keyboard.macModifiers and P.numberKey == "⌘"
   for n = 1, 10 do
     local key = "code:" .. tostring(n + 9) -- 1..9, 0 by key code so Shift doesn't change them
     lib.rebind("SUPER + " .. key, "Switch to page " .. n, go(n))
+    if command then lib.rebind("CTRL + " .. key, "Switch to page " .. n, go(n)) end
     lib.rebind("SUPER + SHIFT + " .. key, "Move window to page " .. n, move(n, true))
     lib.rebind("SUPER + SHIFT + " .. alt .. " + " .. key, "Move window silently to page " .. n, move(n, false))
     if alt ~= "ALT" then hl.unbind("SUPER + SHIFT + ALT + " .. key) end

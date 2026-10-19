@@ -15,6 +15,8 @@ Every part can be switched off or tuned in the Bento app (`bento`, or ⌃⌘,).
   Slide along the dots to flip through previews. Click a dot to go there.
 - ⌃1 … ⌃0 go to the Nth dot, whatever its workspace number. ⌃⇧N moves the window there and follows it;
   ⌃⇧⌥N moves it without following. A number past the last dot opens a new page at the end.
+- Set *Switch with* to ⌘ and ⌘1 … ⌘0 switch pages too, which is easier with a mouse than a trackpad. ⌃N still
+  works, moving a window stays on ⌃⇧N, and apps lose their own ⌘1 … ⌘9 (a browser's tabs, say).
 - Close or minimize a page's last window and the next page slides in. On the rightmost page you stay on the empty screen.
 
 The code is `pages/BarWidget.qml` and `pages/PagePreview.qml` for the bar, and `hypr/pages.lua` for the keys and the left edge.

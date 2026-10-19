@@ -121,7 +121,7 @@ Changed, to match macOS:
 | ⌃← / ⌃→ | Previous / next workspace (macOS Spaces) | focus window → ⌃⌥← → |
 | ⌃↑ | Overview | focus window up → ⌃⌥↑ |
 | ⌃↓ | Minimized-windows drawer | focus window down → ⌃⌥↓ |
-| ⌃1 … ⌃0 | The Nth page dot (not workspace id N); ⌃⇧ moves the window there, ⌃⇧⌥ without following | — |
+| ⌃1 … ⌃0 | The Nth page dot (not workspace id N); ⌃⇧ moves the window there, ⌃⇧⌥ without following. With *Switch with* set to ⌘, ⌘1 … ⌘0 switch too | — |
 | ⌃⌘, | The Bento app (preferences) | — |
 | ⌃Tab / ⌃⇧Tab | Next / previous tab in the app | next / previous workspace (⌃→ ⌃← now) |
 

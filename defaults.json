@@ -23,6 +23,7 @@
     "previewDelay": 250,
     "previewWidth": 260,
     "numberKeys": true,
+    "numberKey": "⌃",
     "leftEdge": true,
     "slideOnEmpty": true,
     "slideAnimation": true
