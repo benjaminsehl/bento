@@ -7,6 +7,10 @@
 --   slide on       close or minimize a page's last window and you slide to
 --                  the next page on the right
 --
+-- Each monitor has its own row of pages: its own dots, its own number keys
+-- and its own ends to swipe past. Workspace ids are shared by every monitor,
+-- so a new page takes the nearest id no other monitor has.
+--
 -- Hyprland drops a workspace once it's empty and you leave it, so the ids
 -- that remain have gaps (3, 4, 7, ...). The dots count positions, never ids.
 -- lib.pages shares pages(), slide_on_if_empty() and show_desktop() with
@@ -16,19 +20,34 @@ return function(lib, S)
   local M = {}
   lib.pages = M
 
-  -- The pages, in dot order: workspaces with windows, plus the focused one.
+  -- The focused monitor's pages, in dot order: workspaces with windows, plus
+  -- the one you're on.
   function M.pages()
     local active = hl.get_active_workspace()
     local active_id = active and not active.special and active.id or nil
+    local mon = hl.get_active_monitor()
+    local name = mon and mon.name
     local ids, seen = {}, {}
     for _, ws in ipairs(hl.get_workspaces()) do
-      if not ws.special and ws.id > 0 and (ws.windows > 0 or ws.id == active_id) and not seen[ws.id] then
+      if not ws.special and ws.id > 0 and (ws.windows > 0 or ws.id == active_id) and not seen[ws.id]
+        and (not name or (ws.monitor and ws.monitor.name) == name) then
         seen[ws.id] = true
         ids[#ids + 1] = ws.id
       end
     end
     table.sort(ids)
     return ids, active
+  end
+
+  -- A new page after the focused monitor's last one: the next id that isn't
+  -- a page on any monitor already.
+  function M.new_page_id()
+    local ids = M.pages()
+    local used = {}
+    for _, ws in ipairs(hl.get_workspaces()) do used[ws.id] = true end
+    local id = (ids[#ids] or 0) + 1
+    while used[id] do id = id + 1 end
+    return id
   end
 
   -- ------------------------------------------------------------ left edge
@@ -39,7 +58,8 @@ return function(lib, S)
   -- real page, and a new empty one is placed to its left.
   --
   -- Ids can't go below 1, so new sessions start at 1001. If a monitor still
-  -- runs out of room, its pages are shifted up by 1000 once.
+  -- runs out of room (a monitor plugged in later starts at 1), its pages are
+  -- shifted up a thousand ids at a time, to ids no other monitor has.
   local BASE = 1000
   M.edges = {} -- monitor name -> { id = workspace id, rule = HL.WorkspaceRule }
 
@@ -54,18 +74,47 @@ return function(lib, S)
       edges[name] = nil
     end
 
-    local function rebase()
-      local active = hl.get_active_workspace()
-      for _, ws in ipairs(hl.get_workspaces()) do
-        if not ws.special and ws.id > 0 and ws.id <= BASE and ws.windows > 0 then
+    -- Every page on the monitor moves by the same amount, so their order
+    -- holds, and onto ids nothing has yet, so no two pages merge.
+    local function rebase(names)
+      local focused = hl.get_active_monitor()
+      local back = nil
+      for name in pairs(names) do
+        local used, mine = {}, {}
+        for _, ws in ipairs(hl.get_workspaces()) do
+          used[ws.id] = true
+          if not ws.special and ws.id > 0 and (ws.monitor and ws.monitor.name) == name then mine[#mine + 1] = ws end
+        end
+        local shift = BASE
+        local function clear()
+          for _, ws in ipairs(mine) do
+            if used[ws.id + shift] then return false end
+          end
+          return true
+        end
+        while not clear() do shift = shift + BASE end
+
+        local mon
+        for _, m in ipairs(hl.get_monitors()) do
+          if m.name == name then mon = m end
+        end
+        for _, ws in ipairs(mine) do
           for _, w in ipairs(ws:get_windows()) do
-            hl.dispatch(hl.dsp.window.move({ workspace = tostring(ws.id + BASE), follow = false, window = w }))
+            hl.dispatch(hl.dsp.window.move({ workspace = tostring(ws.id + shift), follow = false, window = w }))
           end
         end
+        -- Show the moved page where the old one was. Focusing it focuses its
+        -- monitor too, so come back afterwards if that wasn't the one in use.
+        -- An empty page didn't move: focused from elsewhere, it would open on
+        -- the wrong monitor.
+        local here = focused and focused.name == name
+        local active = mon and mon.active_workspace
+        if active and not active.special and active.id > 0 and (active.windows > 0 or here) then
+          hl.dispatch(hl.dsp.focus({ workspace = tostring(active.id + shift) }))
+          if not here then back = focused and focused.name end
+        end
       end
-      if active and not active.special and active.id <= BASE then
-        hl.dispatch(hl.dsp.focus({ workspace = tostring(active.id + BASE) }))
-      end
+      if back then hl.dispatch(hl.dsp.focus({ monitor = back })) end
     end
 
     local function sync()
@@ -83,7 +132,7 @@ return function(lib, S)
         end
       end
 
-      local need_rebase = false
+      local need_rebase = nil
       for _, mon in ipairs(hl.get_monitors()) do
         local name = mon.name
         local active_id = mon.active_workspace and not mon.active_workspace.special and mon.active_workspace.id or nil
@@ -109,13 +158,14 @@ return function(lib, S)
             local rule = hl.workspace_rule({ workspace = tostring(id), persistent = true, monitor = name })
             edges[name] = { id = id, rule = rule }
           else
-            need_rebase = true
+            need_rebase = need_rebase or {}
+            need_rebase[name] = true
           end
         end
       end
       syncing = false
       if need_rebase then
-        rebase()
+        rebase(need_rebase)
         queue()
       end
     end
@@ -188,8 +238,7 @@ return function(lib, S)
     local mon = hl.get_active_monitor()
     local edge = mon and M.edges[mon.name]
     desktop_from = tostring(ws.id)
-    local ids = M.pages()
-    hl.dispatch(hl.dsp.focus({ workspace = tostring(edge and edge.id or ((ids[#ids] or 0) + 1)) }))
+    hl.dispatch(hl.dsp.focus({ workspace = tostring(edge and edge.id or M.new_page_id()) }))
   end
   hl.on("workspace.active", function()
     local ws = hl.get_active_workspace()
@@ -204,8 +253,8 @@ return function(lib, S)
   end
 
   -- --------------------------------------------------------- number keys
-  -- SUPER + N (⌃N with Bento's keys) goes to the Nth dot. A number past the
-  -- last dot opens a new, empty page at the end.
+  -- SUPER + N (⌃N with Bento's keys) goes to the Nth dot on the monitor
+  -- you're on. A number past the last dot opens a new, empty page at the end.
   -- numberKey "⌘" puts switching on CTRL + N (⌘N) as well, for when there's
   -- no trackpad to swipe with; apps lose their own ⌘1 … ⌘9 then. Moving a
   -- window stays on ⌃⇧N, since ⌘⇧3 ⌘⇧4 ⌘⇧5 take screenshots.
@@ -217,7 +266,7 @@ return function(lib, S)
     if active and not active.special and active.windows == 0 and ids[#ids] == active.id then
       return active.id -- already on an empty new page at the end
     end
-    return (ids[#ids] or 0) + 1
+    return M.new_page_id()
   end
 
   local function go(n)

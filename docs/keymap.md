@@ -118,7 +118,7 @@ Changed, to match macOS:
 
 | Keys | Does | Omarchy had |
 |---|---|---|
-| ⌃← / ⌃→ | Previous / next workspace (macOS Spaces) | focus window → ⌃⌥← → |
+| ⌃← / ⌃→ | Previous / next page on this monitor (macOS Spaces) | focus window → ⌃⌥← → |
 | ⌃↑ | Overview | focus window up → ⌃⌥↑ |
 | ⌃↓ | Minimized-windows drawer | focus window down → ⌃⌥↓ |
 | ⌃1 … ⌃0 | The Nth page dot (not workspace id N); ⌃⇧ moves the window there, ⌃⇧⌥ without following. With *Switch with* set to ⌘, ⌘1 … ⌘0 switch too | — |

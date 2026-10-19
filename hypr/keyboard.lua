@@ -72,8 +72,9 @@ return function(lib, S)
 
   -- --------------------------------------------------------- ⌃: desktops
   -- windows.lua puts Overview on ⌃↑ and the drawer on ⌃↓ when they're on.
-  rebind("SUPER + LEFT", "Previous workspace", hl.dsp.focus({ workspace = "e-1" }))
-  rebind("SUPER + RIGHT", "Next workspace", hl.dsp.focus({ workspace = "e+1" }))
+  -- Left and right stay on this monitor's pages ("m"), as swipes do.
+  rebind("SUPER + LEFT", "Previous workspace", hl.dsp.focus({ workspace = "m-1" }))
+  rebind("SUPER + RIGHT", "Next workspace", hl.dsp.focus({ workspace = "m+1" }))
   rebind("SUPER + UP", "Toggle scratchpad", lib.toggle_scratchpad)
   rebind("SUPER + DOWN", "Hide the scratchpad", lib.hide_special)
 

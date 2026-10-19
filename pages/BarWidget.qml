@@ -6,11 +6,11 @@ import qs.Commons
 import qs.Ui
 import ".."
 
-// Page dots: one dot per existing workspace. Hyprland destroys empty
-// workspaces when you leave them, so empty pages simply vanish. The focused
-// page is always shown (even if empty) as a wider, brighter pill. Hover a dot
-// for a live preview of that page. Sizes and previews come from Bento's
-// settings (the "pages" section).
+// Page dots: one dot per workspace on this bar's monitor, so every monitor
+// has its own row. Hyprland destroys empty workspaces when you leave them, so
+// empty pages simply vanish. The page the monitor shows is always there (even
+// if empty) as a wider, brighter pill. Hover a dot for a live preview of that
+// page. Sizes and previews come from Bento's settings (the "pages" section).
 BarWidget {
   id: root
   moduleName: "io.github.benjaminsehl.bento"
@@ -20,7 +20,11 @@ BarWidget {
   readonly property int previewDelay: Number(settings.get("pages", "previewDelay")) || 250
   readonly property real previewWidth: Number(settings.get("pages", "previewWidth")) || 260
 
-  readonly property int focusedId: Hyprland.focusedWorkspace ? Hyprland.focusedWorkspace.id : -1
+  // The monitor this copy of the bar is on (there's one per monitor).
+  readonly property var barScreen: root.QsWindow.window ? root.QsWindow.window.screen : null
+  readonly property var monitor: (root.barScreen && Hyprland.monitorFor(root.barScreen)) || Hyprland.focusedMonitor
+  readonly property string monitorName: root.monitor ? root.monitor.name : ""
+  readonly property int focusedId: root.monitor && root.monitor.activeWorkspace ? root.monitor.activeWorkspace.id : -1
   readonly property string backgroundSource: "file://" + Quickshell.env("HOME") + "/.local/state/omarchy/current/background"
 
   // Once a preview has been shown, sliding to a neighbouring dot previews it
@@ -36,6 +40,7 @@ BarWidget {
     for (var i = 0; i < values.length; i++) {
       var ws = values[i]
       if (ws.id <= 0) continue // skip special workspaces
+      if (root.monitorName && ws.monitor && ws.monitor.name !== root.monitorName) continue
       if (ws.toplevels.values.length > 0 || ws.id === root.focusedId) ids.push(ws.id)
     }
     if (root.focusedId > 0 && ids.indexOf(root.focusedId) === -1) ids.push(root.focusedId)

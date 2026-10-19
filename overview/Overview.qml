@@ -412,12 +412,22 @@ Item {
   }
   property bool hasScratchpadHost: false
 
+  // The nearest id past the end that no other monitor has a page on.
   function newPage(side) {
     var pages = root.layout.pages
     if (!pages.length) return dismiss()
-    var id = side === "left" ? pages[0].id - 1 : pages[pages.length - 1].id + 1
+    var step = side === "left" ? -1 : 1
+    var id = (side === "left" ? pages[0].id : pages[pages.length - 1].id) + step
+    while (id >= 1 && elsewhere(id)) id += step
     if (id < 1) id = pages[0].id // no room on the left; pages.lua makes some
     goToPage(id)
+  }
+
+  function elsewhere(id) {
+    var values = Hyprland.workspaces.values
+    for (var i = 0; i < values.length; i++)
+      if (values[i].id === id) return !root.monitor || !values[i].monitor || values[i].monitor.name !== root.monitor.name
+    return false
   }
 
   // Arrow keys move to the nearest window in that direction.

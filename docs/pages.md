@@ -10,10 +10,12 @@ Every part can be switched off or tuned in the Bento app (`bento`, or ⌃⌘,).
 ## Pages
 
 - One dot per page with windows. The page you're on is a wider, brighter pill.
+- Each monitor has its own pages. Its bar shows only its own dots, and the number keys, ⌃← / ⌃→, swipes and
+  Overview stay on the monitor you're using.
 - Empty pages disappear: Hyprland removes a workspace once you leave it empty.
 - Hover a dot for a live preview of that page: your wallpaper plus each window, in place.
   Slide along the dots to flip through previews. Click a dot to go there.
-- ⌃1 … ⌃0 go to the Nth dot, whatever its workspace number. ⌃⇧N moves the window there and follows it;
+- ⌃1 … ⌃0 go to the Nth dot on this monitor, whatever its workspace number. ⌃⇧N moves the window there and follows it;
   ⌃⇧⌥N moves it without following. A number past the last dot opens a new page at the end.
 - Set *Switch with* to ⌘ and ⌘1 … ⌘0 switch pages too, which is easier with a mouse than a trackpad. ⌃N still
   works, moving a window stays on ⌃⇧N, and apps lose their own ⌘1 … ⌘9 (a browser's tabs, say).
@@ -30,7 +32,9 @@ The code is `pages/BarWidget.qml` and `pages/PagePreview.qml` for the bar, and `
   it until you're on it. Open a window there and it becomes a real page, and a new empty one is placed to its left.
 
 Workspace ids can't go below 1, so new sessions start at workspace 1001 to leave room on the left. If a monitor
-still runs out of room, its windows move up 1000 ids once. The ids never show: dots and ⌃N count positions.
+still runs out of room (one plugged in later starts at 1), its pages move up by a thousand ids, onto ids no other
+monitor has. Monitors share one set of ids, so a new page takes the nearest id that isn't another monitor's page.
+The ids never show: dots and ⌃N count positions.
 
 ## Overview
 

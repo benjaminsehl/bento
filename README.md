@@ -35,13 +35,13 @@ gets lost, and the desktop responds without any delay you can notice.
 ## Pages
 
 Workspaces become an ordered row of pages, shown as dots in the bar. The page
-you're on is a wider, brighter pill.
+you're on is a wider, brighter pill. Each monitor has its own row of pages.
 
 ![Pages in the Omarchy bar](docs/images/pages.png)
 
 - Hover a dot to see a live preview of that page, and slide along the dots to
   flip through them. Click a dot to go there.
-- ⌃1 … ⌃0 go to the Nth dot, whatever the workspace id is. ⌃⇧N takes the
+- ⌃1 … ⌃0 go to the Nth dot on this monitor, whatever the workspace id is. ⌃⇧N takes the
   window with you.
 - Empty pages disappear. Swipe past either end to get a new one.
 - When a page's last window closes, the next page slides in.
