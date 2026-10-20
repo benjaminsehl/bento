@@ -6,6 +6,8 @@
 --                  left past the first dot to start a new first page
 --   slide on       close or minimize a page's last window and you slide to
 --                  the next page on the right
+--   moving         Overview drags a page to a new place in the row, or to
+--                  another monitor
 --
 -- Each monitor has its own row of pages: its own dots, its own number keys
 -- and its own ends to swipe past. Workspace ids are shared by every monitor,
@@ -186,6 +188,8 @@ return function(lib, S)
     }) do
       hl.on(event, queue)
     end
+    -- A workspace changing id has no event; move_page calls this instead.
+    M.sync_edges = queue
 
     -- New sessions start at workspace 1001, leaving room on the left.
     hl.on("hyprland.start", function()
@@ -244,6 +248,106 @@ return function(lib, S)
     local ws = hl.get_active_workspace()
     if desktop_from and ws and ws.windows > 0 and tostring(ws.id) ~= desktop_from then desktop_from = nil end
   end)
+
+  -- -------------------------------------------------------- moving pages
+  -- Overview drags a page to another place in its row, or onto another
+  -- monitor (overview/Overview.qml calls _G.bento.move_page). The workspace
+  -- itself moves, windows, layout and all; only its id changes, since the row
+  -- is in id order. It takes a free id between its new neighbours, or, when
+  -- there's none, the monitor's pages take their ids again in the new order.
+  local function workspace(id)
+    for _, ws in ipairs(hl.get_workspaces()) do
+      if ws.id == id then return ws end
+    end
+  end
+
+  local function change_id(from, to)
+    hl.dispatch(hl.dsp.workspace.change_id({ workspace = tostring(from), id = to }))
+    return workspace(to) ~= nil
+  end
+
+  -- A monitor's pages in order, leaving out one of them.
+  local function row(name, except)
+    local active_id
+    for _, m in ipairs(hl.get_monitors()) do
+      local a = m.active_workspace
+      if m.name == name and a and not a.special then active_id = a.id end
+    end
+    local ids = {}
+    for _, ws in ipairs(hl.get_workspaces()) do
+      if not ws.special and ws.id > 0 and ws.id ~= except and (ws.monitor and ws.monitor.name) == name
+        and (ws.windows > 0 or ws.id == active_id) then
+        ids[#ids + 1] = ws.id
+      end
+    end
+    table.sort(ids)
+    return ids
+  end
+
+  -- index counts from 1; past the end, or nil, is the end.
+  function M.move_page(id, name, index)
+    local ws = workspace(id)
+    if not ws or ws.special or ws.id <= 0 then return end
+    local focused = hl.get_active_monitor()
+    local from = ws.monitor and ws.monitor.name
+    name = name or from
+    if name ~= from then
+      hl.dispatch(hl.dsp.workspace.move({ workspace = tostring(id), monitor = name }))
+      ws = workspace(id)
+      if not ws or (ws.monitor and ws.monitor.name) ~= name then return end
+    end
+
+    local others = row(name, id)
+    index = math.max(1, math.min(index or #others + 1, #others + 1))
+    local before, after = others[index - 1], others[index]
+    if (not before or before < id) and (not after or id < after) then
+      -- Already in place.
+    else
+      local used, top = {}, 0
+      for _, w in ipairs(hl.get_workspaces()) do
+        used[w.id] = true
+        top = math.max(top, w.id)
+      end
+      local free
+      if not after then
+        free = before + 1
+        while used[free] do free = free + 1 end
+      else
+        local lo = before and before + 1 or 1
+        for i = after - 1, lo, -1 do
+          if not used[i] then free = i; break end
+        end
+      end
+      if free then
+        change_id(id, free)
+      else
+        -- No room between them: the pages take their ids again, in the new
+        -- order, by way of ids nothing has yet.
+        local order = {}
+        for i, v in ipairs(others) do order[i] = v end
+        table.insert(order, index, id)
+        local pool = {}
+        for i, v in ipairs(order) do pool[i] = v end
+        table.sort(pool)
+        local moving = {}
+        for i, v in ipairs(order) do
+          if v ~= pool[i] then
+            top = top + 1
+            if not change_id(v, top) then return end
+            moving[#moving + 1] = { temp = top, final = pool[i] }
+          end
+        end
+        for _, m in ipairs(moving) do change_id(m.temp, m.final) end
+      end
+    end
+
+    if M.sync_edges then M.sync_edges() end
+
+    -- Moving a workspace to a monitor can take the focus with it; stay put.
+    local now = hl.get_active_monitor()
+    if focused and now and now.name ~= focused.name then hl.dispatch(hl.dsp.focus({ monitor = focused.name })) end
+  end
+  if _G.bento then _G.bento.move_page = M.move_page end
 
   -- ----------------------------------------------------------- animation
   -- Omarchy turns workspace animations off; slide in 180 ms instead.

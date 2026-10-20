@@ -25,6 +25,12 @@ import "../Windows.js" as Windows
 // place on screen, so they sit in a small shelf centred above. Click a window
 // to go to it, a page to go there, or an empty frame at either end for a new
 // page. Overview covers the page, not the bar.
+//
+// Drag a page to put it somewhere else in the row; the others make room. Drag
+// it to the edge facing another monitor and it moves there, to the end of
+// that monitor's pages. pages.lua does the moving (move_page). Drag a window
+// instead and just the window goes: onto another page, an empty frame for a
+// new page, or another monitor's edge for the page that monitor is showing.
 Item {
   id: root
 
@@ -42,7 +48,10 @@ Item {
   readonly property string pluginId: (manifest && manifest.id) || "io.github.benjaminsehl.bento"
   readonly property string backgroundSource: "file://" + Quickshell.env("HOME") + "/.local/state/omarchy/current/background"
 
-  readonly property var monitor: Hyprland.focusedMonitor
+  // The monitor it opened on, while it's open: moving a page to another
+  // monitor can take the focus there for a moment.
+  property var heldMonitor: null
+  readonly property var monitor: root.heldMonitor || Hyprland.focusedMonitor
   readonly property var targetScreen: {
     var screens = Quickshell.screens
     for (var i = 0; i < screens.length; i++)
@@ -73,7 +82,7 @@ Item {
   readonly property real captionHeight: Style.space(24)
   readonly property real dotSize: Style.spaceReal(5)
 
-  readonly property var empty: ({ pages: [], ghosts: [], windows: [], extras: [], captions: [], scratch: null })
+  readonly property var empty: ({ pages: [], step: 0, ghosts: [], windows: [], extras: [], captions: [], scratch: null })
   property var layout: root.empty
 
   // ------------------------------------------------------------------ zoom
@@ -123,6 +132,8 @@ Item {
       // afresh each time it opens.
       root.layout = root.empty
       root.selected = -1
+      root.heldMonitor = null
+      root.dragEnd(true)
     }
   }
   function reveal() { if (root.shown && root._unseen >= 2 && root.cold === 0) root.revealed = true }
@@ -135,6 +146,7 @@ Item {
   onRevealedChanged: if (root.revealed && root._launch) launchFrame.armed = true
 
   function prepare() {
+    root.heldMonitor = Hyprland.focusedMonitor
     Hyprland.refreshToplevels()
     Hyprland.refreshWorkspaces()
     Hyprland.refreshMonitors()
@@ -144,6 +156,7 @@ Item {
   }
 
   function open(payloadJson) {
+    if (root.dragId !== -1) root.dragEnd(true)
     var cold = !root.shown
     if (cold) prepare()
     root.opened = true
@@ -154,6 +167,7 @@ Item {
   }
 
   function close() {
+    if (root.dragId !== -1) root.dragEnd(true)
     root.opened = false
     if (!root.holding) zoom.animateTo(0)
   }
@@ -283,13 +297,15 @@ Item {
   }
 
   function rebuild() {
-    // Not while it's closing: the camera is on its way into a page.
+    // Not while it's closing: the camera is on its way into a page. Nor while
+    // a page is being dragged, or is on its way to where it was let go.
     if (root.shown && !root.opened && !root.holding) return
+    if (root.dragId !== -1) return
     var W = root.pageW, H = root.pageH
     if (W <= 0 || H <= 0) return
     var aspect = H / W
     var data = collect()
-    var out = { pages: [], ghosts: [], windows: [], extras: [], captions: [], scratch: null }
+    var out = { pages: [], step: 0, ghosts: [], windows: [], extras: [], captions: [], scratch: null }
 
     // Vertical budget: minimized shelf on top, scratchpad below, pages in between.
     var shelfH = data.minimized.length ? Math.round(H * 0.085) : 0
@@ -299,7 +315,12 @@ Item {
 
     // Pages: as large as fits, in one centred row.
     var n = Math.max(1, data.pages.length)
-    var availW = W - root.margin * 2 - (root.ghostWidth + root.gap) * 2 - root.gap * (n - 1)
+    // Another monitor to the side: room for its edge outside the empty frames,
+    // since a dragged window can go to either.
+    var zones = monitorZones(), aside = 0
+    for (var z = 0; z < zones.length; z++)
+      if (zones[z].side === "left" || zones[z].side === "right") aside = root.zoneInset + root.zoneSize
+    var availW = W - (root.margin + aside) * 2 - (root.ghostWidth + root.gap) * 2 - root.gap * (n - 1)
     var availH = bottom - top - root.indicatorHeight
     var miniW = Math.min(availW / n, availH / aspect)
     var miniH = miniW * aspect
@@ -307,6 +328,7 @@ Item {
     var x = (W - rowW) / 2
     var y = top + root.indicatorHeight + (availH - miniH) / 2
     var f = miniW / W
+    out.step = miniW + root.gap
 
     out.ghosts.push({ side: "left", x: x - root.gap - root.ghostWidth, y: y, w: root.ghostWidth, h: miniH })
     for (var p = 0; p < data.pages.length; p++) {
@@ -417,11 +439,16 @@ Item {
   function newPage(side) {
     var pages = root.layout.pages
     if (!pages.length) return dismiss()
+    var id = newPageId(side)
+    goToPage(id < 1 ? pages[0].id : id) // no room on the left; pages.lua makes some
+  }
+
+  function newPageId(side) {
+    var pages = root.layout.pages
     var step = side === "left" ? -1 : 1
     var id = (side === "left" ? pages[0].id : pages[pages.length - 1].id) + step
     while (id >= 1 && elsewhere(id)) id += step
-    if (id < 1) id = pages[0].id // no room on the left; pages.lua makes some
-    goToPage(id)
+    return id
   }
 
   function elsewhere(id) {
@@ -455,6 +482,226 @@ Item {
     var id = t.wayland ? t.wayland.appId : (ipcOf(t).class || "")
     var entry = id ? DesktopEntries.heuristicLookup(id) : null
     return entry && entry.icon ? Quickshell.iconPath(entry.icon, true) : ""
+  }
+
+  // ----------------------------------------------------------------- drag
+
+  property int dragId: -1          // the page picked up, until it's in its place
+  property bool dragging: false    // ...and still held
+  property int dragFrom: -1        // its place in the row
+  property int dropIndex: -1       // where it would go; -1 over another monitor
+  property string dropMonitor: ""  // the monitor it would go to
+  property real dragX: 0           // its top-left, in overlay pixels
+  property real dragY: 0
+  property real _grabX: 0
+  property real _grabY: 0
+  property var zones: []           // the edges facing other monitors
+  property var dragWin: null       // the window picked up, when it's a window
+  property int dropPage: -1        // ...the page it would go to
+  property string dropGhost: ""    // ...or the empty frame, for a new page
+  readonly property bool pageDrag: root.dragId !== -1 && root.dragWin === null
+
+  // A page's place, given in slots along the row (fractions too).
+  function slotX(k) {
+    var pages = root.layout.pages
+    return pages.length ? pages[0].x + k * root.layout.step : 0
+  }
+
+  // Where page i sits while one is being dragged: the others close up behind
+  // it and open up where it would go.
+  function slotOf(i) {
+    if (i === root.dragFrom) return root.dropIndex >= 0 ? root.dropIndex : i
+    var j = i < root.dragFrom ? i : i - 1
+    if (root.dropIndex < 0) return j + 0.5
+    return j >= root.dropIndex ? j + 1 : j
+  }
+
+  // Each other monitor gets the edge facing it, shared with any others there.
+  function monitorZones() {
+    var mon = root.monitor
+    if (!mon) return []
+    var cx = root.monX + root.monW / 2, cy = root.monY + root.monH / 2
+    var sides = { left: [], right: [], top: [], bottom: [] }
+    var all = Hyprland.monitors.values
+    for (var i = 0; i < all.length; i++) {
+      var m = all[i]
+      var ipc = m.lastIpcObject || {}
+      if (m.name === mon.name || m.width <= 0 || m.height <= 0 || ipc.disabled) continue
+      var s = m.scale > 0 ? m.scale : 1
+      var dx = m.x + m.width / s / 2 - cx, dy = m.y + m.height / s / 2 - cy
+      var side = Math.abs(dx) >= Math.abs(dy) ? (dx < 0 ? "left" : "right") : (dy < 0 ? "top" : "bottom")
+      sides[side].push({ name: m.name, along: side === "left" || side === "right" ? dy : dx,
+        aspect: m.height / Math.max(1, m.width) })
+    }
+    var W = root.pageW, H = root.pageH, t = root.zoneSize, out = []
+    for (var key in sides) {
+      var list = sides[key].sort(function(a, b) { return a.along - b.along })
+      var vertical = key === "left" || key === "right"
+      var length = (vertical ? H : W) - root.margin * 2
+      var each = (length - root.gap * (list.length - 1)) / Math.max(1, list.length)
+      for (var k = 0; k < list.length; k++) {
+        var a = root.margin + k * (each + root.gap)
+        out.push({ name: list[k].name, side: key, aspect: list[k].aspect,
+          x: vertical ? (key === "left" ? root.zoneInset : W - root.zoneInset - t) : a,
+          y: vertical ? a : (key === "top" ? root.zoneInset : H - root.zoneInset - t),
+          w: vertical ? t : each, h: vertical ? each : t })
+      }
+    }
+    return out
+  }
+  // Inside the room the row leaves at each end (margin, empty frame, gap),
+  // which a held page doesn't need: the empty frames make way for these.
+  readonly property real zoneInset: Style.space(8)
+  readonly property real zoneSize: root.margin + root.ghostWidth + root.gap - root.zoneInset * 2
+
+  // The zone under (x, y). Past the overlay's edge counts too: the pointer
+  // can be on the other monitor already.
+  function zoneAt(x, y) {
+    for (var i = 0; i < root.zones.length; i++) {
+      var z = root.zones[i]
+      var x0 = z.side === "left" ? -1e6 : z.x, x1 = z.side === "right" ? 1e6 : z.x + z.w
+      var y0 = z.side === "top" ? -1e6 : z.y, y1 = z.side === "bottom" ? 1e6 : z.y + z.h
+      if (x >= x0 && x <= x1 && y >= y0 && y <= y1) return z.name
+    }
+    return ""
+  }
+
+  // The theme's text colour, see-through: shows on light wallpapers and dark.
+  function ink(a) { return Qt.rgba(Color.foreground.r, Color.foreground.g, Color.foreground.b, a) }
+
+  function dragStart(index, press) {
+    var page = root.layout.pages[index]
+    if (!page) return
+    root.zones = monitorZones()
+    root.dragFrom = index
+    root.dropIndex = index
+    root.dropMonitor = ""
+    root.dropPage = -1
+    root.dropGhost = ""
+    // The topmost window under the press, if any.
+    var win = null
+    for (var i = page.windows.length - 1; i >= 0 && !win; i--) {
+      var e = root.layout.windows[page.windows[i].index]
+      if (press.x >= e.x && press.x <= e.x + e.w && press.y >= e.y && press.y <= e.y + e.h) win = e
+    }
+    var from = win || page
+    root._grabX = press.x - from.x
+    root._grabY = press.y - from.y
+    root.dragX = from.x
+    root.dragY = from.y
+    root.dragWin = win
+    root.dragId = page.id
+    root.dragging = true
+  }
+
+  function rectAt(list, x, y) {
+    for (var i = 0; i < list.length; i++) {
+      var r = list[i]
+      if (x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h) return r
+    }
+    return null
+  }
+
+  function dragMove(at) {
+    if (!root.dragging) return
+    root.dragX = at.x - root._grabX
+    root.dragY = at.y - root._grabY
+    root.dropMonitor = zoneAt(at.x, at.y)
+    if (root.dragWin) {
+      var page = root.dropMonitor ? null : rectAt(root.layout.pages, at.x, at.y)
+      var ghost = root.dropMonitor ? null : rectAt(root.layout.ghosts, at.x, at.y)
+      root.dropPage = page ? page.id : -1
+      root.dropGhost = ghost ? ghost.side : ""
+    }
+    if (root.dropMonitor) {
+      root.dropIndex = -1
+      // Past the edge it's on the other monitor, which gets the button's
+      // release instead of Overview: let go for it.
+      if (at.x < 0 || at.y < 0 || at.x > content.width || at.y > content.height) root.drop()
+      return
+    }
+    if (root.dragWin) return
+    var n = root.layout.pages.length
+    var k = root.layout.step > 0 ? Math.round((root.dragX - root.slotX(0)) / root.layout.step) : 0
+    root.dropIndex = Math.max(0, Math.min(n - 1, k))
+  }
+
+  // Let go: into its new place, onto another monitor, or back where it was.
+  function drop() {
+    if (!root.dragging) return
+    root.dragging = false
+    var id = root.dragId
+    if (root.dragWin) return dropWindow()
+    if (root.dropMonitor)
+      lua("_G.bento.move_page(" + id + ", " + q(root.dropMonitor) + ", nil)")
+    else if (root.dropIndex !== root.dragFrom)
+      lua("_G.bento.move_page(" + id + ", nil, " + (root.dropIndex + 1) + ")")
+    else { settle.moved = false; settle.restart(); return }
+    settle.moved = true
+    settle.restart()
+  }
+
+  // A window goes to another page, a new one, or the page another monitor
+  // is showing.
+  function dropWindow() {
+    var to = -1
+    if (root.dropMonitor) {
+      var all = Hyprland.monitors.values
+      for (var i = 0; i < all.length; i++)
+        if (all[i].name === root.dropMonitor && all[i].activeWorkspace) to = all[i].activeWorkspace.id
+    } else if (root.dropGhost) {
+      to = newPageId(root.dropGhost)
+    } else if (root.dropPage !== root.dragId) {
+      to = root.dropPage
+    }
+    settle.moved = to >= 1
+    if (settle.moved)
+      dispatch("hl.dsp.window.move({ workspace = " + q(to) + ", follow = false, window = " + q(addressOf(root.dragWin.toplevel)) + " })")
+    settle.restart()
+  }
+
+  // Esc while holding a page puts it back.
+  function cancelDrag() {
+    root.dragging = false
+    root.dropIndex = root.dragFrom
+    root.dropMonitor = ""
+    settle.moved = false
+    settle.restart()
+  }
+
+  function dragEnd(quiet) {
+    settle.stop()
+    settled.stop()
+    root.dragging = false
+    root.dragId = -1
+    root.dragFrom = -1
+    root.dropIndex = -1
+    root.dropMonitor = ""
+    root.dragWin = null
+    root.dropPage = -1
+    root.dropGhost = ""
+    // At once, so no frame shows the old order; and again shortly, in case
+    // Quickshell's workspaces were still on their way.
+    if (!quiet) { rebuild(); rebuildSoon.restart() }
+  }
+
+  // Once it's glided into place, read Hyprland's pages afresh. Quickshell only
+  // sees a workspace's new id when it asks again.
+  Timer {
+    id: settle
+    property bool moved: false
+    interval: 220
+    onTriggered: {
+      if (!settle.moved) return root.dragEnd(false)
+      Hyprland.refreshWorkspaces()
+      Hyprland.refreshToplevels()
+      settled.restart()
+    }
+  }
+  Timer { id: settled; interval: 120; onTriggered: root.dragEnd(false) }
+
+  function lua(body) {
+    dispatch("(function() if _G.bento and _G.bento.move_page then " + body + " end return hl.dsp.event(\"bento>>ack\") end)()")
   }
 
   // ----------------------------------------------------------------- view
@@ -586,8 +833,21 @@ Item {
           Item {
             id: mini
             required property var modelData
+            required property int index
             readonly property bool zoomed: modelData === root.zoomRect
-            x: modelData.x; y: modelData.y; width: modelData.w; height: modelData.h
+            // Picked up, it follows the pointer; the rest slide out of its way.
+            readonly property bool lifted: root.dragging && root.pageDrag && root.dragId === modelData.id
+            readonly property bool leaving: !root.dragging && root.pageDrag && root.dragId === modelData.id && root.dropMonitor !== ""
+            x: lifted ? root.dragX : (root.pageDrag ? root.slotX(root.slotOf(index)) : modelData.x)
+            y: lifted ? root.dragY : modelData.y
+            width: modelData.w; height: modelData.h
+            z: root.pageDrag && root.dragId === modelData.id ? 1 : 0
+            scale: lifted ? (root.dropMonitor ? 0.5 : 1.03) : 1
+            opacity: leaving ? 0 : 1
+            Behavior on x { enabled: root.pageDrag && !mini.lifted; NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
+            Behavior on y { enabled: root.pageDrag && !mini.lifted; NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
+            Behavior on scale { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
+            Behavior on opacity { NumberAnimation { duration: 160 } }
 
             Rectangle {
               anchors.horizontalCenter: parent.horizontalCenter
@@ -644,6 +904,7 @@ Item {
                     required property var modelData
                     x: modelData.x; y: modelData.y; width: modelData.w; height: modelData.h
                     readonly property bool cold: mini.zoomed && !capture.hasContent
+                    opacity: root.dragWin && root.dragWin.index === modelData.index ? 0.2 : 1
                     onColdChanged: root.cold += pw.cold ? 1 : -1
                     Component.onCompleted: if (pw.cold) root.cold++
                     Component.onDestruction: if (pw.cold) root.cold--
@@ -735,9 +996,32 @@ Item {
               anchors.margins: -2
               radius: Style.cornerRadius + 2
               color: "transparent"
-              border.width: mini.modelData.focused ? 2 : 1
-              border.color: mini.modelData.focused ? Qt.rgba(1, 1, 1, 0.55) : Qt.rgba(1, 1, 1, 0.1)
+              readonly property bool target: root.dragWin !== null && root.dropPage === mini.modelData.id
+                && root.dropPage !== root.dragId
+              border.width: mini.modelData.focused || target ? 2 : 1
+              border.color: target ? Color.accent
+                : mini.modelData.focused ? Qt.rgba(1, 1, 1, 0.55) : Qt.rgba(1, 1, 1, 0.1)
               opacity: root.chrome
+            }
+
+            // Over everything on the page, so a drag can start on a window
+            // too. It only takes the pointer once it moves; a click still
+            // goes to the window or the page.
+            Item {
+              anchors.fill: parent
+              DragHandler {
+                id: dragger
+                target: null
+                enabled: root.opened && !root.holding && mini.modelData.windows.length > 0
+                  && (root.dragId === -1 || mini.lifted)
+                cursorShape: Qt.ClosedHandCursor
+                onActiveChanged: {
+                  if (active) root.dragStart(mini.index, centroid.scenePressPosition)
+                  else root.drop()
+                }
+                onCentroidChanged: if (active) root.dragMove(centroid.scenePosition)
+                onCanceled: root.drop()
+              }
             }
           }
         }
@@ -779,13 +1063,18 @@ Item {
               id: ghost
               required property var modelData
               x: modelData.x; y: modelData.y; width: modelData.w; height: modelData.h
+              // A held page can't go there; the other monitors take the ends.
+              opacity: root.pageDrag ? 0 : 1
+              visible: opacity > 0
+              Behavior on opacity { NumberAnimation { duration: 140 } }
 
               Rectangle {
                 anchors.fill: parent
                 radius: Style.cornerRadius
                 color: "transparent"
-                border.width: 1
-                border.color: Qt.rgba(1, 1, 1, ghostArea.containsMouse ? 0.4 : 0.1)
+                border.width: root.dropGhost === ghost.modelData.side ? 2 : 1
+                border.color: root.dropGhost === ghost.modelData.side ? Color.accent
+                  : Qt.rgba(1, 1, 1, ghostArea.containsMouse ? 0.4 : 0.1)
                 Behavior on border.color { ColorAnimation { duration: 120 } }
               }
               Text {
@@ -927,13 +1216,85 @@ Item {
         }
       }
 
+      // While a page is held: the edges facing other monitors, to drop it on.
+      Item {
+        anchors.fill: parent
+        opacity: root.dragging && root.zones.length ? 1 : 0
+        visible: opacity > 0
+        Behavior on opacity { NumberAnimation { duration: 140 } }
+        Repeater {
+          model: root.zones
+          Rectangle {
+            id: zone
+            required property var modelData
+            readonly property bool hot: root.dropMonitor === modelData.name
+            x: modelData.x; y: modelData.y; width: modelData.w; height: modelData.h
+            radius: Style.cornerRadius
+            color: root.ink(hot ? 0.14 : 0.06)
+            border.width: hot ? 2 : 1
+            border.color: hot ? Color.accent : root.ink(0.25)
+            Behavior on color { ColorAnimation { duration: 120 } }
+            Behavior on border.color { ColorAnimation { duration: 120 } }
+            // The monitor itself, small, with its name: drop the page on it.
+            Column {
+              anchors.centerIn: parent
+              spacing: Style.space(8)
+              Rectangle {
+                anchors.horizontalCenter: parent.horizontalCenter
+                width: Math.min(zone.width, zone.height) * 0.62
+                height: width * zone.modelData.aspect
+                radius: Style.spaceReal(3)
+                color: zone.hot ? Qt.rgba(Color.accent.r, Color.accent.g, Color.accent.b, 0.3) : root.ink(0.08)
+                border.width: zone.hot ? 2 : 1
+                border.color: zone.hot ? Color.accent : root.ink(0.6)
+                Behavior on color { ColorAnimation { duration: 120 } }
+              }
+              Caption {
+                anchors.horizontalCenter: parent.horizontalCenter
+                width: zone.width
+                height: implicitHeight
+                text: zone.modelData.name
+                opacity: zone.hot ? 0.95 : 0.6
+              }
+            }
+          }
+        }
+      }
+
+      // The window being dragged, following the pointer.
+      Item {
+        id: carried
+        visible: root.dragging && root.dragWin !== null
+        x: root.dragX
+        y: root.dragY
+        width: root.dragWin ? root.dragWin.w : 0
+        height: root.dragWin ? root.dragWin.h : 0
+        scale: root.dropMonitor ? 0.5 : 1.04
+        Behavior on scale { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
+        Rectangle {
+          anchors.fill: parent
+          anchors.margins: -2
+          radius: 4
+          color: "transparent"
+          border.width: 2
+          border.color: Color.accent
+        }
+        ScreencopyView {
+          anchors.fill: parent
+          captureSource: carried.visible ? root.dragWin.toplevel.wayland : null
+          live: true
+          paintCursor: false
+          constraintSize: Qt.size(carried.width * 2, carried.height * 2)
+        }
+      }
+
       Item {
         id: keys
         anchors.fill: parent
         focus: true
         Keys.onPressed: function(event) {
           switch (event.key) {
-          case Qt.Key_Escape: root.dismiss(); break
+          case Qt.Key_Escape: if (root.dragging) root.cancelDrag(); else root.dismiss(); break
           case Qt.Key_Left: root.move(-1, 0); break
           case Qt.Key_Right: root.move(1, 0); break
           case Qt.Key_Up: root.move(0, -1); break
