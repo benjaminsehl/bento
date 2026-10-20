@@ -1,0 +1,57 @@
+#!/bin/bash
+# Spotify's previous, play/pause and next, for the Magic Keyboard's F7–F9:
+#   bento-spotify previous | play-pause | next
+# Talks to Spotify over MPRIS, whatever else is playing. play-pause opens
+# Spotify in a new window when it isn't running, and starts playing once it's
+# up; on the lock screen it only plays and pauses.
+player=org.mpris.MediaPlayer2.spotify
+# There while a press is starting Spotify. Another press takes it away, so the
+# first one doesn't press Play over it.
+starting=${XDG_RUNTIME_DIR:-/tmp}/bento-spotify-starting
+
+mpris() { busctl --user call "$player" /org/mpris/MediaPlayer2 org.mpris.MediaPlayer2.Player "$1" >/dev/null 2>&1; }
+running() { busctl --user status "$player" >/dev/null 2>&1; }
+playing() {
+  busctl --user get-property "$player" /org/mpris/MediaPlayer2 org.mpris.MediaPlayer2.Player PlaybackStatus 2>/dev/null |
+    grep -q Playing
+}
+
+case ${1-} in
+  previous) mpris Previous ;;
+  next) mpris Next ;;
+  play-pause)
+    if running; then
+      rm -f "$starting"
+      mpris PlayPause
+      exit
+    fi
+    # Pressed again while Spotify starts: don't play after all.
+    if [[ -e $starting ]]; then
+      rm -f "$starting"
+      exit
+    fi
+    # Nothing opens behind the lock screen.
+    omarchy-hyprland-session-locked && exit
+    # Omarchy's launcher offers to install Spotify when it's missing.
+    [[ -x /usr/bin/spotify ]] || exec omarchy-launch-spotify
+    touch "$starting"
+    trap 'rm -f "$starting"' EXIT
+    setsid uwsm-app -- /usr/bin/spotify >/dev/null 2>&1 &
+    # Spotify takes a few seconds to come up, and a moment more before it
+    # takes Play.
+    for _ in $(seq 60); do
+      running && break
+      sleep 0.5
+    done
+    for _ in $(seq 20); do
+      [[ -e $starting ]] || exit
+      playing && exit
+      mpris Play
+      sleep 0.5
+    done
+    ;;
+  *)
+    echo "usage: bento-spotify previous|play-pause|next" >&2
+    exit 2
+    ;;
+esac

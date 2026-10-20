@@ -241,10 +241,29 @@ shortcut. foot and other terminals aren't supported.
 
 | Keyboard | Top row without fn | With fn | How |
 |---|---|---|---|
-| Apple Magic Keyboard | **Mac**: brightness, Mission Control, Spotlight, dictation, Do Not Disturb, media, volume | F1–F12 | `hid_apple fnmode=1` in the system script (Omarchy's installer set 2, F-keys first) |
+| Apple Magic Keyboard | **Mac**: brightness, Overview, Omarchy's menu, microphone, Do Not Disturb, Spotify, volume | Mac codes (below) | Bento binds the plain F-keys, on this keyboard only |
 | Dell XPS built-in | F1–F12 | media | Firmware Fn Lock; already right, nothing to change |
 
-Magic Keyboard top row (codes from the test):
+Omarchy sets `hid_apple fnmode=2` (F-keys first), so the Magic Keyboard's top
+row sends F1–F12 without fn. Bento gives those keys the Mac functions, on this
+keyboard only:
+
+| Key | Does |
+|---|---|
+| F1 / F2 | Brightness of the focused display. The Studio Display takes brightness over its USB link, so only when its Thunderbolt cable reaches the laptop: through a dock that passes only the picture, nothing changes |
+| F3 | Overview |
+| F4 | Omarchy's menu (Omarcast, when it's installed) |
+| F5 | Mute the microphone |
+| F6 | Do Not Disturb |
+| F7 / F8 / F9 | Spotify's previous, play/pause and next, whatever else is playing. F8 opens Spotify in a new window when it isn't running, and starts playing |
+| F10 / F11 / F12 | Mute, volume down, volume up |
+
+With a modifier (⌘F5, ⇧F12) the keys still reach apps, and so do every other
+keyboard's F-keys. The Magic Keyboard can't send a plain F-key: without fn the
+keys are Bento's, and with fn they send the codes below ❓.
+
+With fn, or without it under `hid_apple fnmode=1` (the system script), the top
+row sends these codes (codes from the test):
 
 | Key | Sends | Does |
 |---|---|---|
@@ -253,10 +272,14 @@ Magic Keyboard top row (codes from the test):
 | F4 | `KEY_SEARCH` (XF86Search) | App launcher |
 | F5 | `KEY_MICMUTE` (XF86AudioMicMute) | Dictation toggle, on the Magic Keyboard only (the Dell's mic key stays mic mute) |
 | F6 | `KEY_SLEEP` (XF86Sleep) | Do Not Disturb. Tested: it doesn't suspend the machine |
-| F7–F12 | media, volume | as labelled |
+| F7–F12 | media, volume | as labelled; the media keys go to the shell's player, which isn't always Spotify |
 
-F9 stops being Omarchy's push-to-talk (Caps Lock takes over), so VS Code's
-breakpoint key is free.
+The system script swaps the two layers: the codes come without fn, and Bento's
+F-key bindings need fn. On the Magic Keyboard it gains nothing.
+
+F9 stops being Omarchy's push-to-talk (Caps Lock takes over), so on the Dell
+keyboard VS Code's breakpoint key is free. On the Magic Keyboard F9 is
+Spotify's next track; switching off Top row without fn gives it back.
 
 ## Trackpad gestures
 
@@ -291,7 +314,8 @@ back/forward in Chrome ❓ (Chrome may support it with a flag; not tested yet).
 Separate from the plugin. Shows what it will change first, and has an undo.
 
 1. keyd: modifier swap per keyboard, Caps Lock → F13 (see Physical layout).
-2. `hid_apple fnmode=1`.
+2. `hid_apple fnmode=1`: Apple keyboards send the Mac codes without fn (see
+   Function keys; the Magic Keyboard doesn't need it).
 
 ## Dropped
 

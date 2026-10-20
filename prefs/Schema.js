@@ -18,7 +18,7 @@ var panes = [
       { section: "keyboard", key: "appShortcuts", type: "bool", title: "App shortcuts", requires: ["keyboard", "macModifiers"],
         detail: "⌘W closes the tab, then the window. ⌘Q quits, ⌘Tab switches, ⌘Space finds apps, ⌘⇧3 ⌘⇧4 ⌘⇧5 capture the screen." },
       { section: "keyboard", key: "topRow", type: "bool", title: "Top row without fn", requires: ["keyboard", "macModifiers"],
-        detail: "On Apple keyboards: Overview, the launcher, dictation and Do Not Disturb, without holding fn." },
+        detail: "The Magic Keyboard's top row does what's printed on it: brightness, Overview, Omarchy's menu, microphone, Do Not Disturb, Spotify and volume. Its F-keys reach apps only with a modifier." },
       { section: "keyboard", key: "dictation", type: "bool", title: "Caps Lock dictation", requires: ["keyboard", "macModifiers"],
         detail: "Hold Caps Lock to dictate, if voxtype is installed." }
     ]

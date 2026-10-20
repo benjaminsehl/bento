@@ -1,6 +1,8 @@
 #!/bin/bash
 # Apple keyboards: top row sends Mac functions (brightness, Mission Control,
 # Spotlight, dictation, media, volume) without fn; fn + key gives F1–F12.
+# The Magic Keyboard doesn't need it: Bento gives its plain F-keys the Mac
+# functions, and with this they'd need fn.
 #
 #   sudo system/apple-fnmode.sh          Mac top row       (fnmode=1)
 #   sudo system/apple-fnmode.sh --undo   F-keys first      (fnmode=2, Omarchy's default)

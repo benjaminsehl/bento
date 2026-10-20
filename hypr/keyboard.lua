@@ -223,8 +223,9 @@ return function(lib, S)
   end
 
   -- ------------------------------------------------- Magic Keyboard top row
-  -- With hid_apple fnmode=1 (system/apple-fnmode.sh) the top row sends its
-  -- Mac functions without fn. windows.lua puts Overview on Mission Control.
+  -- An Apple keyboard's top row sends its Mac functions with fn (Omarchy's
+  -- hid_apple fnmode=2), or without fn under fnmode=1 (system/apple-fnmode.sh).
+  -- windows.lua puts Overview on Mission Control.
   if K.topRow then
     local apple = { inclusive = true, list = { "apple-inc.-magic-keyboard-with-touch-id" } }
     local not_apple = { inclusive = false, list = { "apple-inc.-magic-keyboard-with-touch-id" } }
@@ -239,10 +240,39 @@ return function(lib, S)
   end
 
   -- ------------------------------------------------ Caps Lock: push-to-talk
-  -- The keymap makes Caps Lock F13. F9 goes back to apps (VS Code breakpoints).
+  -- The keymap makes Caps Lock F13. F9 goes back to apps (VS Code breakpoints),
+  -- except on the Magic Keyboard (below).
   hl.unbind("F9")
   if K.dictation and o.cmd_present("voxtype") then
     o.bind("F13", "Start dictation (push-to-talk)", "voxtype record start")
     o.bind("F13", "Stop dictation (push-to-talk)", "voxtype record stop", { release = true })
+  end
+
+  -- ------------------------------------------------ Magic Keyboard F-keys
+  -- Under Omarchy's hid_apple fnmode=2 the Magic Keyboard's top row sends
+  -- F1–F12 without fn. On that keyboard, the plain keys do what's printed on
+  -- them, with Spotify for the media keys; fn sends the Mac functions above.
+  -- With a modifier, and on other keyboards, F-keys still reach apps.
+  -- windows.lua puts Overview on F3.
+  if K.topRow then
+    lib.magic_keyboard = { inclusive = true, list = { "apple-inc.-magic-keyboard-with-touch-id" } }
+    local spotify = o.shell_quote(lib.repo .. "/bin/bento-spotify") .. " "
+    for _, k in ipairs({
+      { "F1", "Brightness down", "omarchy-brightness-display 5%-", { locked = true, repeating = true } },
+      { "F2", "Brightness up", "omarchy-brightness-display +5%", { locked = true, repeating = true } },
+      { "F4", "Omarchy menu", "omarchy-menu toggle" },
+      { "F5", "Mute microphone", "omarchy-audio-input-mute", { locked = true } },
+      { "F6", "Toggle silencing notifications", "omarchy-toggle-notification-silencing" },
+      { "F7", "Previous track in Spotify", spotify .. "previous", { locked = true } },
+      { "F8", "Play or pause Spotify", spotify .. "play-pause", { locked = true } },
+      { "F9", "Next track in Spotify", spotify .. "next", { locked = true } },
+      { "F10", "Mute", "omarchy-audio-output-volume mute-toggle", { locked = true } },
+      { "F11", "Volume down", "omarchy-audio-output-volume lower", { locked = true, repeating = true } },
+      { "F12", "Volume up", "omarchy-audio-output-volume raise", { locked = true, repeating = true } },
+    }) do
+      local opts = k[4] or {}
+      opts.device = lib.magic_keyboard
+      o.bind(k[1], k[2], k[3], opts)
+    end
   end
 end

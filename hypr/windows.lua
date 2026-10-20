@@ -57,8 +57,9 @@ return function(lib, S)
   end
 
   -- ------------------------------------------------------------- keys
-  -- With Bento's keys: ⌘M minimizes, ⌃↑ and Mission Control open Overview, ⌃↓
-  -- the drawer. Without them, SUPER + M minimizes.
+  -- With Bento's keys: ⌘M minimizes, ⌃↑, Mission Control and the Magic
+  -- Keyboard's F3 open Overview, ⌃↓ the drawer. Without them, SUPER + M
+  -- minimizes.
   if W.minimize then
     lib.rebind(mac and "CTRL + M" or "SUPER + M", "Minimize window", minimize)
     if mac then lib.rebind("SUPER + DOWN", "Minimized windows", toggle_drawer) end
@@ -66,6 +67,7 @@ return function(lib, S)
   if W.overview and mac then
     lib.rebind("SUPER + UP", "Overview", toggle_overview)
     if S.keyboard.topRow then lib.rebind("XF86LaunchA", "Overview", toggle_overview) end
+    if lib.magic_keyboard then o.bind("F3", "Overview", toggle_overview, { device = lib.magic_keyboard }) end
   end
 
   -- ⌃⌘, opens Bento's preferences, like ⌘, in an app.

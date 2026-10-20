@@ -167,8 +167,8 @@ and do nothing. If something stops it, a desktop notification says why.
 
 `install.sh` also works from any checkout of this repo and points everything at
 that checkout, so to update you edit the files and run `hyprctl reload`.
-Re-run `install.sh` after changing `xkb/`. On Apple keyboards,
-`sudo system/apple-fnmode.sh` puts the media keys first on the top row.
+Re-run `install.sh` after changing `xkb/`. On the Magic Keyboard, the top row
+does what's printed on it without fn.
 
 <details>
 <summary>What the installer touches</summary>
