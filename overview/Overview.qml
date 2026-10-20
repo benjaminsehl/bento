@@ -8,6 +8,7 @@ import qs.Ui
 import ".."
 import "../motion"
 import "../motion/Motion.js" as Motion
+import "../Windows.js" as Windows
 
 // Overview: the desktop, zoomed out.
 //
@@ -224,7 +225,7 @@ Item {
     var values = Hyprland.workspaces.values
     for (var i = 0; i < values.length; i++) {
       var ws = values[i]
-      var wins = ws.toplevels.values
+      var wins = Windows.live(ws.toplevels.values)
       if (ws.id > 0) {
         if (mon && ws.monitor && ws.monitor.name !== mon.name) continue
         if (wins.length === 0 && ws.id !== activeId) continue

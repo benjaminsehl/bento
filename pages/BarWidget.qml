@@ -5,6 +5,7 @@ import Quickshell.Hyprland
 import qs.Commons
 import qs.Ui
 import ".."
+import "../Windows.js" as Windows
 
 // Page dots: one dot per workspace on this bar's monitor, so every monitor
 // has its own row. Hyprland destroys empty workspaces when you leave them, so
@@ -41,7 +42,7 @@ BarWidget {
       var ws = values[i]
       if (ws.id <= 0) continue // skip special workspaces
       if (root.monitorName && ws.monitor && ws.monitor.name !== root.monitorName) continue
-      if (ws.toplevels.values.length > 0 || ws.id === root.focusedId) ids.push(ws.id)
+      if (Windows.live(ws.toplevels.values).length > 0 || ws.id === root.focusedId) ids.push(ws.id)
     }
     if (root.focusedId > 0 && ids.indexOf(root.focusedId) === -1) ids.push(root.focusedId)
     ids.sort(function(a, b) { return a - b })

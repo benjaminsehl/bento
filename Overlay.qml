@@ -7,6 +7,7 @@ import "drawer"
 import "prefs"
 import "places"
 import "tiles"
+import "Windows.js" as Windows
 
 // Bento's one overlay entry point. It stays loaded (manifest keepLoaded), so
 // it is listening the moment fingers touch the trackpad.
@@ -112,7 +113,7 @@ Item {
   property bool scratchSettled: false    // ...and has for a couple of frames
 
   function scratchpadWindows() {
-    var out = [], all = Hyprland.toplevels.values
+    var out = [], all = Windows.live(Hyprland.toplevels.values)
     for (var i = 0; i < all.length; i++)
       if (all[i].workspace && all[i].workspace.name === "special:scratchpad") out.push(all[i])
     return out

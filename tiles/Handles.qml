@@ -4,6 +4,7 @@ import Quickshell.Wayland
 import Quickshell.Hyprland
 import qs.Commons
 import ".."
+import "../Windows.js" as Windows
 
 // Drag handles between tiles. Bring the pointer to the gap between two tiled
 // windows and a small handle appears there, level with the pointer. Drag it
@@ -45,7 +46,7 @@ Item {
     var mon = monitor.lastIpcObject || {}
     if (mon.specialWorkspace && mon.specialWorkspace.name) return []
     var wsId = monitor.activeWorkspace.id
-    var tiles = [], all = Hyprland.toplevels.values
+    var tiles = [], all = Windows.live(Hyprland.toplevels.values)
     for (var i = 0; i < all.length; i++) {
       var ipc = all[i].lastIpcObject || {}
       if (!ipc.at || !ipc.size || !ipc.workspace || ipc.workspace.id !== wsId) continue

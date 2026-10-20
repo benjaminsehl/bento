@@ -5,6 +5,7 @@ import Quickshell.Hyprland
 import Quickshell.Wayland
 import qs.Commons
 import qs.Ui
+import "../Windows.js" as Windows
 
 // Hover popover with a live miniature of one workspace: the wallpaper plus
 // each window captured with ScreencopyView at its real position and size.
@@ -39,7 +40,7 @@ PopupWindow {
   // Tiled first, then floating, then fullscreen, so stacking looks right.
   readonly property var windows: {
     if (!workspace) return []
-    var list = workspace.toplevels.values.slice()
+    var list = Windows.live(workspace.toplevels.values)
     function rank(t) {
       var ipc = t.lastIpcObject || {}
       return (ipc.fullscreen ? 2 : 0) + (ipc.floating ? 1 : 0)

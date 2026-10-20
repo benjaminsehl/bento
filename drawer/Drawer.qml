@@ -6,6 +6,7 @@ import QtQuick
 import qs.Commons
 import ".."
 import "../motion/Motion.js" as Motion
+import "../Windows.js" as Windows
 
 // The minimized-window drawer, as a strip of cards: minimized windows
 // (⌘M puts them on the hidden "special:minimized" workspace) shrink into
@@ -39,7 +40,7 @@ Item {
 
   function minimizedToplevels() {
     var out = []
-    var all = Hyprland.toplevels.values
+    var all = Windows.live(Hyprland.toplevels.values)
     for (var i = 0; i < all.length; i++) {
       var t = all[i]
       if (t.workspace && t.workspace.name === "special:minimized") out.push(t)
