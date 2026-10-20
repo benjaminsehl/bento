@@ -291,6 +291,12 @@ end
 
 -- ---------------------------------------------------------------- the module
 return function(lib, S)
+  -- omarchy-menu-keybindings reads this config with a stand-in hl, to list
+  -- the keys. Its functions are tables that hand themselves back for any key,
+  -- so a loop over hl.get_monitors() never ends, and nothing it says is real.
+  -- No displays to set up then, and no state to write.
+  if type(hl.get_monitors) ~= "function" then return end
+
   local json = dofile(lib.repo .. "/hypr/json.lua")
   local sysfs = dofile(lib.repo .. "/hypr/sysfs.lua")
 
