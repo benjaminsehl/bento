@@ -11,25 +11,126 @@
 -- Bindings are written the way Linux sees them, with the Mac keys in the
 -- comments. Everything here depends on that swap, so with Mac modifiers off
 -- this whole module stays out.
+
+-- Keymaps: install.sh compiles one keymap per keyboard type into
+-- ~/.local/state/bento. keyboards.json in the checkout says which keyboard
+-- gets which (the Keychron K3 Pro in Mac mode sends ⌃ ⌥ ⌘ in Apple's
+-- positions); ~/.config/bento/keyboards.json changes or adds keyboards, field
+-- by field. "omarchy" means Omarchy's own layout, as for keyboards not listed.
+-- Shares lib.keyboards, so setups.lua can swap a keymap while a setup is on.
+local function keymaps(lib)
+  local json = dofile(lib.repo .. "/hypr/json.lua")
+  local kb_file = { omarchy = "" }
+  for _, keymap in ipairs({ "apple", "pc" }) do
+    local file = lib.state .. "/keymap-" .. keymap .. ".xkb"
+    if lib.exists(file) then kb_file[keymap] = file end
+  end
+  local valid = { apple = true, pc = true, omarchy = true }
+
+  local merged = {}
+  local config = (os.getenv("XDG_CONFIG_HOME") or (lib.home .. "/.config")) .. "/bento/keyboards.json"
+  for _, path in ipairs({ lib.repo .. "/keyboards.json", config }) do
+    local file = json.read(path)
+    if type(file) == "table" and not json.is_array(file) then
+      for id, entry in pairs(file) do
+        if type(entry) == "table" then
+          merged[id] = merged[id] or {}
+          for field, value in pairs(entry) do merged[id][field] = value end
+        end
+      end
+    end
+  end
+
+  -- Hyprland names input devices after the kernel's names: lower case, with
+  -- spaces and commas as "-", and "-1", "-2" for a second and third device
+  -- with the same name. The kernel lists them with their vendor:product.
+  local present, by_id = {}, {}
+  local f = io.open("/proc/bus/input/devices", "r")
+  if f then
+    for block in ((f:read("a") or "") .. "\n\n"):gmatch("(.-)\n\n") do
+      local vendor, product = block:match("I: Bus=%x+ Vendor=(%x+) Product=(%x+)")
+      local name = block:match('N: Name="([^\n]*)"')
+      if vendor and name then
+        name = name:lower():gsub("[ ,]", "-")
+        local n = present[name] or 0
+        present[name] = n + 1
+        if (" " .. (block:match("H: Handlers=([^\n]*)") or "") .. " "):find(" kbd ", 1, true) then
+          local id = (vendor .. ":" .. product):lower()
+          by_id[id] = by_id[id] or {}
+          table.insert(by_id[id], n == 0 and name or (name .. "-" .. n))
+        end
+      end
+    end
+    f:close()
+  end
+
+  local list, ids = {}, {}
+  for id in pairs(merged) do ids[#ids + 1] = id end
+  table.sort(ids)
+  for _, id in ipairs(ids) do
+    local entry = merged[id]
+    if valid[entry.keymap] then
+      local k = { id = id, label = type(entry.label) == "string" and entry.label or id, keymap = entry.keymap,
+        own = entry.keymap, connected = false, devices = json.array(), ids = {} }
+      local function add(name)
+        for _, known in ipairs(k.devices) do
+          if known == name then return end
+        end
+        k.devices[#k.devices + 1] = name
+        if present[name] then k.connected = true end
+      end
+      for _, name in ipairs(type(entry.devices) == "table" and entry.devices or {}) do
+        if type(name) == "string" and name ~= "" then add(name) end
+      end
+      local vps = { id }
+      for _, vp in ipairs(type(entry.ids) == "table" and entry.ids or {}) do vps[#vps + 1] = vp end
+      for _, raw in ipairs(vps) do
+        local vp = tostring(raw):lower()
+        if vp:match("^%x%x%x%x:%x%x%x%x$") then
+          k.ids[vp] = true
+          for _, name in ipairs(by_id[vp] or {}) do
+            add(name)
+            k.connected = true
+          end
+        end
+      end
+      list[#list + 1] = k
+    end
+  end
+
+  -- apple and pc only when install.sh has compiled them, as before.
+  local function emit(k)
+    local file = kb_file[k.keymap]
+    if not file then return false end
+    for _, name in ipairs(k.devices) do hl.device({ name = name, kb_file = file }) end
+    return true
+  end
+  for _, k in ipairs(list) do emit(k) end
+
+  lib.keyboards = { list = list }
+  -- id: a keyboard's id in keyboards.json, or one of its vendor:product pairs.
+  function lib.keyboards.override(id, keymap)
+    if not valid[keymap] then return false end
+    for _, k in ipairs(list) do
+      if k.id == id or k.ids[tostring(id):lower()] then
+        if not kb_file[keymap] then return false end
+        k.keymap, k.override = keymap, keymap
+        return emit(k)
+      end
+    end
+    return false
+  end
+end
+
 return function(lib, S)
   local K = S.keyboard
   if not K.macModifiers then return end
   local rebind, send, send_once, is_terminal = lib.rebind, lib.send, lib.send_once, lib.is_terminal
 
   -- -------------------------------------------------------------- keymaps
-  -- install.sh compiles one keymap per keyboard type into ~/.local/state/bento.
-  -- Keyboards not listed keep Omarchy's layout.
-  local keyboards = {
-    { name = "apple-inc.-magic-keyboard-with-touch-id", keymap = "apple" },
-    -- Keychron K3 Pro in Mac mode sends ⌃ ⌥ ⌘ in Apple's positions.
-    { name = "keychron-keychron-k3-pro", keymap = "apple" },
-    { name = "keychron-keychron-k3-pro-keyboard", keymap = "apple" },
-    { name = "at-translated-set-2-keyboard", keymap = "pc" },
-  }
-  for _, k in ipairs(keyboards) do
-    local file = lib.state .. "/keymap-" .. k.keymap .. ".xkb"
-    if lib.exists(file) then hl.device({ name = k.name, kb_file = file }) end
-  end
+  -- A broken keyboards.json mustn't cost the bindings below: the error is
+  -- raised at the end, once everything else is in place.
+  local keymaps_ok, keymaps_err = pcall(keymaps, lib)
 
   -- ----------------------------------------------- Omarchy's Alt, on Option
   -- No key sends Alt any more, so every Omarchy binding that uses ALT would be
@@ -227,14 +328,20 @@ return function(lib, S)
   -- hid_apple fnmode=2), or without fn under fnmode=1 (system/apple-fnmode.sh).
   -- windows.lua puts Overview on Mission Control.
   if K.topRow then
-    local apple = { inclusive = true, list = { "apple-inc.-magic-keyboard-with-touch-id" } }
-    local not_apple = { inclusive = false, list = { "apple-inc.-magic-keyboard-with-touch-id" } }
+    -- The Magic Keyboard under every name keyboards.json found it by, so over
+    -- Bluetooth too, where it goes by whatever it was called on a Mac.
+    local names = { "apple-inc.-magic-keyboard-with-touch-id" }
+    for _, k in ipairs(lib.keyboards and lib.keyboards.list or {}) do
+      if k.id == "apple-magic-keyboard" and #k.devices > 0 then names = { table.unpack(k.devices) } end
+    end
+    lib.magic_keyboard = { inclusive = true, list = names }
+    local not_apple = { inclusive = false, list = names }
     o.bind("XF86LaunchA", "Mission Control (scratchpad)", lib.toggle_scratchpad)
     o.bind("XF86Search", "Apps menu", "omarchy-menu toggle apps")
     hl.unbind("XF86AudioMicMute")
     o.bind("XF86AudioMicMute", "Mute microphone", "omarchy-audio-input-mute", { locked = true, device = not_apple })
     if o.cmd_present("voxtype") and K.dictation then
-      o.bind("XF86AudioMicMute", "Toggle dictation", "voxtype record toggle", { device = apple })
+      o.bind("XF86AudioMicMute", "Toggle dictation", "voxtype record toggle", { device = lib.magic_keyboard })
     end
     o.bind_toggle("XF86Sleep", "Toggle silencing notifications", "notification-silencing")
   end
@@ -255,7 +362,6 @@ return function(lib, S)
   -- With a modifier, and on other keyboards, F-keys still reach apps.
   -- windows.lua puts Overview on F3.
   if K.topRow then
-    lib.magic_keyboard = { inclusive = true, list = { "apple-inc.-magic-keyboard-with-touch-id" } }
     local spotify = o.shell_quote(lib.repo .. "/bin/bento-spotify") .. " "
     for _, k in ipairs({
       { "F1", "Brightness down", "omarchy-brightness-display 5%-", { locked = true, repeating = true } },
@@ -275,4 +381,6 @@ return function(lib, S)
       o.bind(k[1], k[2], k[3], opts)
     end
   end
+
+  if not keymaps_ok then error("keymaps: " .. tostring(keymaps_err), 0) end
 end

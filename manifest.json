@@ -12,6 +12,9 @@
     "bar-widget"
   ],
   "keepLoaded": true,
+  "omarchy": {
+    "clonedFrom": "omarchy.workspaces"
+  },
   "entryPoints": {
     "service": "Service.qml",
     "overlay": "Overlay.qml",

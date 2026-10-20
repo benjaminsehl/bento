@@ -1,0 +1,356 @@
+#!/bin/bash
+# Give back stock Omarchy once Bento is disabled or removed: delete the
+# Hyprland hook, Bento's links in ~/.local/bin, its app entry, its lines in the
+# Ghostty config and ~/.local/state/bento, then reload Hyprland. Turning Bento
+# back on puts it all back (the Service runs install.sh).
+#
+# install.sh copies this file to ~/.local/state/bento/bento-cleanup so it
+# outlives the plugin folder. The Service starts it when the shell lets go of
+# Bento, and the hook and hypr/bento.lua start it when Hyprland loads while
+# Bento is off. A shell restart lets go of Bento too, so it first waits until
+# Omarchy says the same thing twice, a few seconds apart, and only acts if that
+# is "disabled" or "gone". It never acts on a shell.json it can't read.
+#
+#   bento-cleanup [--settle]  wait for Omarchy to settle, as above
+#   bento-cleanup --now       clean up at once: uninstall.sh, which has just
+#                             turned Bento off itself
+#   --purge                   also delete your settings in ~/.config/bento
+#   bento-cleanup --status    print what it goes by: enabled, disabled, absent
+#                             or unknown (install.sh asks before a run by hand)
+#   bento-cleanup --tile-hint print monitors.lua lines that keep a tiled
+#                             display on one stream without Bento
+#
+# While Omarchy holds Hyprland's reloads for an update, Bento's last load stays
+# live until the reload that ends the hold. The hook then only starts this
+# again at that reload, which takes the hook and ~/.local/state/bento away.
+#
+# A tiled display Bento kept on one stream goes back to Omarchy's catch-all,
+# which drives both halves at "preferred". When a settled cleanup takes the
+# hook away while one is connected, a notification gives the lines that keep
+# it as it was; uninstall.sh prints them.
+
+# All of it runs inside main: bash has read the whole function before the copy
+# in ~/.local/state/bento deletes itself.
+main() {
+  set -uo pipefail
+
+  local id=io.github.benjaminsehl.bento mode=settle purge=no arg
+  for arg; do
+    case $arg in
+      --settle) mode=settle ;;
+      --now) mode=now ;;
+      --status) mode=status ;;
+      --tile-hint) mode=tile-hint ;;
+      --purge) purge=yes ;;
+      *) echo "Usage: bento-cleanup [--settle | --now] [--purge] | --status | --tile-hint" >&2; exit 2 ;;
+    esac
+  done
+
+  local plugin="$HOME/.config/omarchy/plugins/$id"
+  local shell_json="$HOME/.config/omarchy/shell.json"
+  local toggle="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy/toggles/hypr/bento.lua"
+  local state="$HOME/.local/state/bento"
+  local bin="$HOME/.local/bin"
+  local desktop="$HOME/.local/share/applications/bento.desktop"
+  local ghostty_mark="# Added by Bento: Mac keys under the Bento layout."
+
+  # Where Bento's links and Ghostty line can point: the checkout install.sh
+  # recorded, the plugin folder, the checkout the plugin folder links to, and
+  # this script's own checkout when it runs from one.
+  local roots=() root
+  root=$(cat "$state/repo" 2>/dev/null) && [[ -n $root ]] && roots+=("$root")
+  roots+=("$plugin")
+  root=$(realpath -e "$plugin" 2>/dev/null) && roots+=("$root")
+  root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." 2>/dev/null && pwd -P) \
+    && [[ -f $root/hypr/bento.lua ]] && roots+=("$root")
+
+  # Omarchy's own rule for "enabled" (PluginRegistry.isEnabled): listed in the
+  # bar or in plugins[], and not in disabledPlugins. A file the shell would
+  # throw away (not version 1) is "unknown".
+  local status_jq='
+    def eid: if type == "object" then .id else . end;
+    def arr: if type == "array" then . else [] end;
+    if type != "object" or .version != 1 then "unknown"
+    elif (.disabledPlugins | arr | index($id)) != null then "disabled"
+    elif (.bar | type) == "object" and ((.bar.id == $id)
+          or ((.bar.layout | type) == "object"
+              and ([.bar.layout.left, .bar.layout.center, .bar.layout.right | arr | .[] | eid] | index($id)) != null))
+    then "enabled"
+    elif ([.plugins | arr | .[] | objects | .id] | index($id)) != null then "enabled"
+    else "disabled" end'
+
+  # What Omarchy does to shell.json when it disables a clone of
+  # omarchy.workspaces (PluginRegistry.restoreCloneSource): Bento's bar entry
+  # becomes omarchy.workspaces again, in the same place. Only needed when the
+  # plugin folder vanished without Omarchy disabling Bento first. Every
+  # binding gives exactly one value, whatever shape "bar" has: one that gave
+  # none would make the whole filter print nothing.
+  local repair_jq='
+    def eid: if type == "object" then .id else . end;
+    def arr: if type == "array" then . else [] end;
+    (((.cloneSourceRestores | arr) | index($id)) != null) as $restore
+    | ([.bar | objects | .layout | objects | .left, .center, .right | arr | .[] | eid] | index($id) != null) as $inbar
+    | if $inbar then
+        .bar.layout |= with_entries(if (.value | type) == "array" then .value |= map(select(eid != $src)) else . end)
+        | .bar.layout |= with_entries(if (.value | type) == "array" then .value |= map(if eid == $id then (if type == "object" then .id = $src else $src end) else . end) else . end)
+      else . end
+    | if (.plugins | type) == "array" then .plugins |= map(select((type == "object" and .id == $id) | not)) else . end
+    | if (.cloneSourceRestores | type) == "array" then .cloneSourceRestores -= [$id] | (if .cloneSourceRestores == [] then del(.cloneSourceRestores) else . end) else . end
+    | if $restore and (.disabledPlugins | type) == "array" then .disabledPlugins -= [$src] | (if .disabledPlugins == [] then del(.disabledPlugins) else . end) else . end'
+
+  # Whether the running shell says Bento is enabled. No answer (not running,
+  # still starting, stuck) is not a yes.
+  local answered=no
+  ipc_enabled() {
+    local out
+    out=$(omarchy-shell shell listPlugins 2>/dev/null) || return 1
+    answered=yes
+    [[ $(jq -r --arg id "$id" '.[] | select(.id == $id) | .enabled' <<<"$out" 2>/dev/null) == true ]]
+  }
+
+  # What shell.json says: enabled, disabled or unknown.
+  saved_status() {
+    local out
+    out=$(jq -r --arg id "$id" "$status_jq" "$shell_json" 2>/dev/null) || out=unknown
+    case $out in
+      enabled | disabled) echo "$out" ;;
+      *) echo unknown ;;
+    esac
+  }
+
+  # enabled, disabled, absent (the plugin folder is gone) or unknown.
+  status() {
+    if ipc_enabled; then echo enabled; return; fi
+    [[ -f $plugin/manifest.json ]] || { echo absent; return; }
+    local mid
+    mid=$(jq -r .id "$plugin/manifest.json" 2>/dev/null) || { echo unknown; return; }
+    [[ $mid == "$id" ]] || { echo absent; return; }
+    saved_status
+  }
+
+  # For each tiled display (two halves, one screen) connected at Bento's last
+  # load: the monitors.lua lines that drive it as Bento did, from the state
+  # this cleanup is about to delete. Nothing when there is none. By connector,
+  # as Bento's own rules are: a desc: rule matches both halves on any port, so
+  # with the connector rule after it gone stale the display would stay black.
+  tile_hint() {
+    jq -r '
+      .requested.monitors as $requested
+      | .devices.displays[]? | select(.tiled == true and (.left | type) == "string")
+      | . as $display
+      | (first($requested[]? | select(.output == $display.left and (.disabled | not))) // {}) as $rule
+      | "  -- The ports these halves used today. On another port or dock, put the new\n"
+        + "  -- names here (hyprctl monitors all), or the display falls back to stock.\n"
+        + ([.connectors[]? | select(type == "string" and . != $display.left)
+            | "  hl.monitor({ output = \(tojson), disabled = true })\n"] | add // "")
+        + "  hl.monitor({ output = \(.left | tojson), mode = \(($rule.mode // "WIDTHxHEIGHT@HZ") | tojson), position = \"auto\", scale = \($rule.scale // 1) })"
+    ' "$state/setup.json" 2>/dev/null || true
+  }
+
+  # One critical notification, through Omarchy's sender where there is one.
+  # The daemon reads the body as markup. Bounded, so a missing daemon can't
+  # hold up the cleanup.
+  notify() { # headline body
+    local body=$2 sender=notify-send
+    body=${body//&/"&amp;"}; body=${body//</"&lt;"}; body=${body//>/"&gt;"}
+    command -v omarchy-notification-send >/dev/null && sender=omarchy-notification-send
+    timeout 5 "$sender" -u critical "$1" "$body" >/dev/null 2>&1 || true
+  }
+
+  case $mode in
+    status) status; exit 0 ;;
+    tile-hint) tile_hint; exit 0 ;;
+  esac
+
+  # Two matching answers six seconds apart, up to five times, so a shell
+  # restart, or a disable quickly undone, passes by without effect.
+  settle() {
+    local try a b
+    for try in 1 2 3 4 5; do
+      sleep 2; a=$(status)
+      sleep 4; b=$(status)
+      [[ $a == "$b" ]] || continue
+      case $a in
+        disabled | absent) echo "$a"; return 0 ;;
+        *) return 1 ;;
+      esac
+    done
+    return 1
+  }
+
+  local s
+  if [[ $mode == settle ]]; then
+    s=$(settle) || exit 0
+  fi
+
+  # install.sh takes the same lock, so the two never interleave.
+  exec 9>"${XDG_RUNTIME_DIR:-/tmp}/bento.lock"
+  flock -w 30 9 || { echo "bento-cleanup: Bento's installer is still busy; try again" >&2; exit 1; }
+
+  if [[ $mode == settle ]]; then
+    # Once more, now that install.sh can't be halfway through.
+    [[ $(status) == "$s" ]] || exit 0
+  else
+    # The caller turned Bento off and means it, but if the shell still has it
+    # on, cleaning up now would only last until the Service reinstalls.
+    if ipc_enabled; then
+      echo "bento-cleanup: Omarchy still has Bento enabled" >&2
+      exit 1
+    fi
+    s=disabled
+    [[ $(status) == absent ]] && s=absent
+  fi
+
+  # While Omarchy holds Hyprland's reloads for an update, Bento's last load
+  # stays live until the reload that ends the hold, and its timers and handlers
+  # can still write to $state. So until then the hook loads nothing and only
+  # starts this cleanup again, and $state stays with the copy it starts: that
+  # reload finishes the job.
+  held() { compgen -G "${OMARCHY_HYPRLAND_RELOAD_GUARD_STATE_DIR:-/run/omarchy/hyprland-reload-guard}/*" >/dev/null; }
+  keep_copy() { # this script in $state, if it isn't there already
+    local self copy="$state/bento-cleanup"
+    self=$(readlink -f "${BASH_SOURCE[0]}")
+    cmp -s "$self" "$copy" && [[ -x $copy ]] && return 0
+    { mkdir -p "$state" && cp "$self" "$copy.tmp.$$" && chmod 755 "$copy.tmp.$$" && mv -f "$copy.tmp.$$" "$copy"; } \
+      || { rm -f "$copy.tmp.$$"; return 1; }
+  }
+  local finish_hook
+  finish_hook=$(cat <<'EOF'
+-- Written by Bento (io.github.benjaminsehl.bento), finishing its cleanup. The
+-- next load starts it again, and it deletes this file; deleting it by hand is safe.
+pcall(function()
+  local cleanup = (os.getenv("HOME") or "") .. "/.local/state/bento/bento-cleanup"
+  local c = io.open(cleanup, "r")
+  if c then
+    c:close()
+    os.execute("setsid -f bash '" .. (cleanup:gsub("'", "'\\''")) .. "' --settle </dev/null >/dev/null 2>&1")
+  end
+end)
+EOF
+)
+
+  local reload=no finish=no did=no tool link target tmp
+  # The Hyprland hook, if Bento wrote it.
+  if [[ -f $toggle ]] && head -n 1 "$toggle" | grep -q '^-- Written by [Bb]ento'; then
+    if held && keep_copy; then
+      finish=yes
+      if [[ $(<"$toggle") != "$finish_hook" ]]; then
+        if printf '%s\n' "$finish_hook" >"$toggle.tmp.$$" && mv -f "$toggle.tmp.$$" "$toggle"; then
+          did=yes && echo "Hyprland reloads are on hold for an update: $toggle only finishes this cleanup at the reload that ends it"
+        else
+          rm -f "$toggle.tmp.$$"
+        fi
+      fi
+    else
+      rm -f "$toggle" && reload=yes && did=yes && echo "Removed $toggle"
+    fi
+  fi
+
+  # Links, only where they point into Bento.
+  for tool in bento bento-apply mac-keybindings mac-paste; do
+    link="$bin/$tool"
+    [[ -L $link ]] || continue
+    target=$(readlink "$link")
+    for root in "${roots[@]}"; do
+      if [[ $target == "$root/bin/$tool" ]]; then
+        rm -f "$link" && did=yes && echo "Removed $link"
+        break
+      fi
+    done
+  done
+
+  if [[ -f $desktop ]] && grep -qxF "Exec=$bin/bento" "$desktop"; then
+    rm -f "$desktop" && did=yes && echo "Removed $desktop"
+  fi
+
+  # Ghostty: the comment bento-apply writes, the blank line before it and the
+  # config-file line after it. Written next to the real file (the config may
+  # be a symlink into a dotfiles repo) and renamed over it.
+  local ghostty includes=""
+  ghostty=$(readlink -f "$HOME/.config/ghostty/config" 2>/dev/null)
+  for root in "${roots[@]}"; do includes+="config-file = ?\"$root/ghostty/bento.conf\""$'\n'; done
+  if [[ -n $ghostty && -f $ghostty ]] && grep -qF -e "$ghostty_mark" -e '/ghostty/bento.conf"' "$ghostty"; then
+    tmp="$ghostty.tmp.$$"
+    if MARK=$ghostty_mark INCLUDES=$includes awk '
+      BEGIN {
+        mark = ENVIRON["MARK"]
+        n = split(ENVIRON["INCLUDES"], list, "\n")
+        for (i = 1; i <= n; i++) if (list[i] != "") include[list[i]] = 1
+      }
+      { line[NR] = $0 }
+      END {
+        for (i = 1; i <= NR; i++) {
+          if (line[i] == mark || (line[i] in include)) continue
+          if (line[i] == "" && line[i + 1] == mark) continue
+          if (i > 1 && line[i - 1] == mark && line[i] ~ /^config-file = \?".*\/ghostty\/bento\.conf"$/) continue
+          print line[i]
+        }
+      }' "$ghostty" >"$tmp" && ! cmp -s "$tmp" "$ghostty"; then
+      chmod --reference="$ghostty" "$tmp" 2>/dev/null
+      mv -f "$tmp" "$ghostty" && did=yes && echo "Removed Bento's lines from $ghostty"
+      omarchy-restart-terminal >/dev/null 2>&1 || true
+    else
+      rm -f "$tmp"
+    fi
+  fi
+
+  # shell.json still lists Bento, but Omarchy never disabled it: the plugin
+  # folder went away by hand, or uninstall.sh ran while the shell was down.
+  # Do what disable would have; the shell reads the file when it starts.
+  if [[ $s == absent || ($mode == now && $answered == no) ]] && [[ $(saved_status) != unknown ]]; then
+    local saved
+    saved=$(readlink -f "$shell_json")
+    tmp="$saved.tmp.$$"
+    # Only ever a whole shell config over the user's: never an empty or
+    # half-written file, which the shell would replace with its defaults.
+    if jq --arg id "$id" --arg src omarchy.workspaces "$repair_jq" "$saved" >"$tmp" 2>/dev/null \
+      && jq -e 'type == "object" and .version == 1' "$tmp" >/dev/null 2>&1 \
+      && [[ $(jq -S -c . "$tmp") != "$(jq -S -c . "$saved")" ]]; then
+      chmod --reference="$saved" "$tmp" 2>/dev/null
+      mv -f "$tmp" "$saved" && did=yes && echo "Took Bento out of $shell_json"
+      omarchy-shell shell reloadConfig >/dev/null 2>&1 || true
+    else
+      rm -f "$tmp"
+    fi
+  fi
+
+  # The hook went, so the next reload (this one, or Omarchy's resume) drives a
+  # tiled display with stock rules. Disabling or removing Bento in Omarchy
+  # leaves no terminal to say so in, and the state that knows how Bento drove
+  # it goes below; uninstall.sh asked for the lines itself (--tile-hint).
+  if [[ $mode == settle && $reload == yes ]]; then
+    local hint
+    hint=$(tile_hint)
+    if [[ -n $hint ]]; then
+      local warning="Stock Omarchy drives both halves of your tiled display at \"preferred\", which can leave it split or black. To keep it on one stream, add to ~/.config/hypr/monitors.lua:"
+      echo "$warning"; echo "$hint"
+      notify "Bento is off" "$warning"$'\n'"$hint"
+    fi
+  fi
+
+  # Reload only when the hook went: a reload without it never starts another
+  # cleanup. While Omarchy holds reloads, the hook stayed for its resume.
+  if [[ $reload == yes ]]; then
+    hyprctl reload >/dev/null 2>&1 || true
+  fi
+
+  # Nothing in here is worth keeping without Bento: re-enabling rebuilds it.
+  # This copy of the script goes with it, unless the hook still needs it.
+  if [[ $finish == yes ]]; then
+    echo "Kept $state for the reload that ends the hold"
+  elif [[ -d $state ]]; then
+    rm -rf "$state" && did=yes && echo "Removed $state"
+  fi
+  # bin/bento-setup's lock (the app's too). Not bento.lock: this script holds
+  # it until it exits.
+  [[ $finish == yes ]] || rm -f "${XDG_RUNTIME_DIR:-/tmp}/bento-setup.lock"
+  local settings="${XDG_CONFIG_HOME:-$HOME/.config}/bento"
+  if [[ $purge == yes && -d $settings ]]; then
+    rm -rf "$settings" && did=yes && echo "Removed $settings"
+  fi
+
+  [[ $did == yes || $finish == yes ]] || echo "Nothing of Bento's was left to remove."
+  exit 0
+}
+
+main "$@"; exit

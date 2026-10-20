@@ -13,6 +13,31 @@ function lib.exists(path)
   return f ~= nil
 end
 
+-- One word for the shell that hl.exec_cmd starts: it's → 'it'\''s'.
+function lib.quote(s)
+  return "'" .. tostring(s):gsub("'", "'\\''") .. "'"
+end
+
+-- A desktop notification. Omarchy's sender can run a command when it's
+-- clicked (exec: the program and its arguments); notify-send stands in where
+-- that's missing. urgency: "low", "normal" or "critical".
+function lib.notify(urgency, headline, body, exec)
+  local function words(list)
+    local out = {}
+    for _, w in ipairs(list) do out[#out + 1] = lib.quote(w) end
+    return table.concat(out, " ")
+  end
+  -- A leading "-" would read as an option.
+  local args = { "-u", urgency, (tostring(headline):gsub("^%-+", "")) }
+  if body and body ~= "" then args[#args + 1] = (tostring(body):gsub("^%-+", "")) end
+  local sender = lib.omarchy .. "/bin/omarchy-notification-send"
+  if lib.exists(sender) then
+    hl.exec_cmd(lib.quote(sender) .. " " .. words(args) .. (exec and (" --exec " .. words(exec)) or ""))
+  else
+    hl.exec_cmd("notify-send " .. words(args))
+  end
+end
+
 -- Same send technique as Omarchy's clipboard bindings, with the down/up split
 -- that works around Hyprland leaving synthetic key state stuck
 -- (hyprwm/Hyprland#14099). Sent keys never trigger Hyprland's own bindings.

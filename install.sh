@@ -1,17 +1,30 @@
 #!/bin/bash
-# Hook Bento into the places Omarchy loads from. Everything points back at this
-# checkout, so editing it and running `hyprctl reload` is the whole update
-# (re-run install.sh after changing xkb/). Settings, and what follows from them
-# (the bar's page dots, Ghostty's Mac keys), are bin/bento-apply's job.
+# Hook Bento into the places Omarchy loads from. The Service runs this from the
+# plugin folder whenever the shell starts Bento (and after an update), so you
+# rarely need to. Editing the checkout and running `hyprctl reload` is the
+# whole update otherwise (re-run install.sh after changing xkb/). Settings, and
+# what follows from them (Ghostty's Mac keys), are bin/bento-apply's job.
+#
+# Disabling or removing Bento in Omarchy takes all of it away again
+# (bin/bento-cleanup); so does uninstall.sh.
 #
 # Safe to re-run: a run that finds everything in place changes nothing. If
-# Hyprland reports config errors after loading Bento, it unhooks itself again.
+# loading Bento gives Hyprland config errors it didn't have before, it unhooks
+# itself again.
+#
+# Bento only runs as an Omarchy plugin. To work on a checkout, link it as the
+# plugin and enable it (the shell also notices the link by itself):
+#   ln -s ~/path/to/bento ~/.config/omarchy/plugins/io.github.benjaminsehl.bento
+#   omarchy-shell shell rescanPlugins
+#   omarchy plugin enable io.github.benjaminsehl.bento
 
 set -euo pipefail
 
+id=io.github.benjaminsehl.bento
 # -P: the plugin folder may be a symlink to this checkout.
 repo=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)
-toggles="$HOME/.local/state/omarchy/toggles/hypr"
+plugin="$HOME/.config/omarchy/plugins/$id"
+toggles="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy/toggles/hypr"
 state="$HOME/.local/state/bento"
 bin="$HOME/.local/bin"
 apps="$HOME/.local/share/applications"
@@ -19,6 +32,18 @@ apps="$HOME/.local/share/applications"
 fail() { echo "bento: $*" >&2; exit 1; }
 
 [[ -f $repo/hypr/bento.lua ]] || fail "run install.sh from a Bento checkout"
+# Omarchy's disable and remove are what take Bento out again, so this has to
+# be the copy Omarchy knows as the plugin.
+[[ $(realpath -e "$plugin" 2>/dev/null) == "$repo" ]] \
+  || fail "Bento is an Omarchy plugin: omarchy plugin add <url> --enable (or link this checkout as the plugin)"
+
+# Run by hand while Omarchy has Bento off, all of this would only last until
+# the reload's gate started the cleanup. So ask what the cleanup goes by.
+# Not when the Service runs this (no terminal): an enable starts the Service
+# before the shell has saved shell.json.
+if [[ -t 1 ]] && [[ $(bash "$repo/bin/bento-cleanup" --status 2>/dev/null) == disabled ]]; then
+  fail "Bento is off in Omarchy: omarchy plugin enable $id"
+fi
 
 omarchy_path=${OMARCHY_PATH:-/usr/share/omarchy}
 [[ -f $omarchy_path/default/hypr/toggles.lua ]] || fail "needs Omarchy 4 or newer (Lua Hyprland config)"
@@ -30,27 +55,69 @@ if compgen -G "$toggles/macifier-*.lua" >/dev/null; then
   fail "Macifier is active; run 'omarchy-macifier preset off' first"
 fi
 
+# One at a time with bento-cleanup, which a disable starts.
+exec 9>"${XDG_RUNTIME_DIR:-/tmp}/bento.lock"
+flock -w 30 9 || fail "a Bento cleanup is still running; try again"
+
+# Hyprland's errors before anything changes, so the check at the end only
+# counts the ones Bento brought (another plugin's may be there already).
+errors_before=$(hyprctl configerrors 2>/dev/null || true)
+
 mkdir -p "$toggles" "$state" "$bin" "$apps"
 changed=no
 
+# Write a file unless it already says that: a temp file next to it, renamed
+# over it, so Hyprland never reads half of one. Returns 1 when unchanged.
+put() { # file content
+  [[ -f $1 && $(<"$1") == "$2" ]] && return 1
+  { printf '%s\n' "$2" >"$1.tmp.$$" && mv -f "$1.tmp.$$" "$1"; } || fail "could not write $1"
+}
+
 # Keymaps: one per keyboard type, compiled from xkb/symbols/bento.
 for variant in apple pc; do
-  out="$state/keymap-$variant.xkb"
   new=$(xkbcli compile-keymap --include "$repo/xkb" --include-defaults --layout bento --variant "$variant") \
     || fail "could not compile the $variant keymap"
-  if [[ ! -f $out || $(<"$out") != "$new" ]]; then
-    printf '%s\n' "$new" > "$out"
-    changed=yes
-  fi
+  put "$state/keymap-$variant.xkb" "$new" && changed=yes
 done
 
-# Omarchy lists the toggles directory with `find -type f`, which skips
-# symlinks, so the hook is a real file that loads the checkout.
-hook=$(printf -- '-- Written by bento install.sh.\n_G.bento_repo = [[%s]]\ndofile([[%s]])' "$repo" "$repo/hypr/bento.lua")
-if [[ ! -f $toggles/bento.lua || $(<"$toggles/bento.lua") != "$hook" ]]; then
-  printf '%s\n' "$hook" > "$toggles/bento.lua"
-  changed=yes
+# The hook Hyprland loads. A real file (Omarchy lists the toggles directory
+# with `find -type f`, which skips symlinks) that loads the plugin folder, and
+# once that is gone, starts the cleanup instead. It names no checkout, so an
+# update leaves it alone.
+stub=$(cat <<'EOF'
+-- Written by Bento (io.github.benjaminsehl.bento), stub 2. Bento deletes this
+-- file when it is disabled or removed in Omarchy; deleting it by hand is safe.
+local home = os.getenv("HOME") or ""
+local plugin = home .. "/.config/omarchy/plugins/io.github.benjaminsehl.bento"
+local f = io.open(plugin .. "/hypr/bento.lua", "r")
+if f then
+  f:close()
+  _G.bento_repo, _G.bento_stub = plugin, 2
+  dofile(plugin .. "/hypr/bento.lua")
+else
+  -- The plugin is gone: put Omarchy back, in the background.
+  pcall(function()
+    local cleanup = home .. "/.local/state/bento/bento-cleanup"
+    local c = io.open(cleanup, "r")
+    if c then
+      c:close()
+      os.execute("setsid -f bash '" .. (cleanup:gsub("'", "'\\''")) .. "' --settle </dev/null >/dev/null 2>&1")
+    end
+  end)
+end
+EOF
+)
+put "$toggles/bento.lua" "$stub" && changed=yes
+
+# The cleanup has to outlive the plugin folder, and know which checkout the
+# links point into. Neither changes what Hyprland loads.
+if ! cmp -s "$repo/bin/bento-cleanup" "$state/bento-cleanup" || [[ ! -x $state/bento-cleanup ]]; then
+  { cp "$repo/bin/bento-cleanup" "$state/bento-cleanup.tmp.$$" \
+    && chmod 755 "$state/bento-cleanup.tmp.$$" \
+    && mv -f "$state/bento-cleanup.tmp.$$" "$state/bento-cleanup"; } || fail "could not copy bento-cleanup"
 fi
+put "$state/repo" "$repo" || true
+
 rm -f "$toggles/omarchy-mac.lua"
 # Pages used to be its own plugin (omarchy-pages); Bento has it now.
 if [[ -f $toggles/pages.lua ]]; then rm -f "$toggles/pages.lua"; changed=yes; fi
@@ -69,31 +136,38 @@ Type=Application
 Name=Bento
 Comment=Windows, pages, keys and gestures for Omarchy
 Exec=$bin/bento
+TryExec=$bin/bento
 Icon=$repo/docs/images/icon-light.svg
 Categories=Settings;
 Keywords=bento;keyboard;trackpad;gestures;pages;overview;windows;preferences;
 EOF
 )
-if [[ ! -f $apps/bento.desktop || $(<"$apps/bento.desktop") != "$desktop" ]]; then
-  printf '%s\n' "$desktop" > "$apps/bento.desktop"
-  changed=yes
-fi
+put "$apps/bento.desktop" "$desktop" && changed=yes
 # An earlier version linked a paste helper; Ghostty pastes images itself now.
 [[ -L $bin/mac-paste ]] && rm -f "$bin/mac-paste"
+
+# Bento must be one entry in the bar and nowhere else: listed in "plugins"
+# too, disabling it would leave it running.
+if jq -e --arg id "$id" '[.plugins[]? | objects | .id] | index($id)' "$HOME/.config/omarchy/shell.json" >/dev/null 2>&1; then
+  echo "bento: Bento is also in \"plugins\" in ~/.config/omarchy/shell.json; take it out there, or disabling it won't turn it off" >&2
+fi
 
 if [[ $changed == no ]]; then
   echo "Bento is already installed."
   exit 0
 fi
 
-# Apply the settings (bar, Ghostty) and reload Hyprland. If it still reports
-# errors with the settings put back, take Bento out again.
-"$repo/bin/bento-apply" || true
-errors=$(hyprctl configerrors)
-if [[ -n ${errors//[[:space:]]/} ]]; then
+# Apply the settings (Ghostty) and reload Hyprland. This run changed code,
+# not settings, so a module error is no reason to touch them (bento.lua
+# notifies it). If Hyprland has errors it didn't have before, take Bento out
+# again.
+"$repo/bin/bento-apply" --no-rollback || true
+errors_after=$(hyprctl configerrors 2>/dev/null || true)
+new_errors=$(grep -vxF -f <(printf '%s\n' "$errors_before") <<<"$errors_after" | grep -v '^[[:space:]]*$' || true)
+if [[ -n $new_errors ]]; then
   rm -f "$toggles/bento.lua"
   hyprctl reload >/dev/null
-  echo "$errors" >&2
+  echo "$new_errors" >&2
   fail "Hyprland reported errors, so Bento unhooked itself again"
 fi
 

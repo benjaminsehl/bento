@@ -1,11 +1,14 @@
 #!/bin/bash
 # Open the Bento app (preferences), optionally at a pane:
-#   bento [preferences [keyboard|trackpad|pages|windows|terminal|about]]
+#   bento [preferences [keyboard|trackpad|pages|windows|setups|terminal|about]]
 #   bento overview | bento drawer
+# or work with setups (bin/bento-setup has the list):
+#   bento setup ...
 view=${1:-preferences}
 case $view in
+  setup) shift; exec "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/bento-setup" "$@" ;;
   preferences|overview|drawer) ;;
-  *) echo "usage: bento [preferences [pane]|overview|drawer]" >&2; exit 2 ;;
+  *) echo "usage: bento [preferences [pane]|overview|drawer|setup ...]" >&2; exit 2 ;;
 esac
 payload=$(jq -cn --arg view "$view" --arg pane "${2:-}" '{view: $view} + (if $pane == "" then {} else {pane: $pane} end)')
 exec omarchy-shell shell summon io.github.benjaminsehl.bento "$payload"

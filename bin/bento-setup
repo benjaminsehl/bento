@@ -1,0 +1,691 @@
+#!/bin/bash
+# Setups from the command line (docs/setups.md). At every Hyprland config load
+# hypr/setups.lua picks a setup, checks that the displays came out as asked,
+# and writes what it found to ~/.local/state/bento/setup.json. This reads that
+# file, asks for a setup through setup-request.json, saves setups to
+# ~/.config/bento/setups.json, and reloads Hyprland.
+#
+#   bento setup                  the setups, the one in use, and why
+#   bento setup <name|id>        use it until a display or dock changes
+#   bento setup auto             back to automatic
+#   bento setup pick             choose from Omarchy's menu
+#   bento setup save <name>      save what's connected and how it's arranged; prints the new id
+#   bento setup why              every relevant device, its identity, and how each setup scored
+#   bento setup apply            (for the app) after it wrote setups.json: reload and check, or put the old one back
+#   bento setup status           the state file as JSON, for scripts
+#
+# Exits 0 when it worked, 1 when it failed or was refused (the reason goes to
+# stderr), and 2 for a usage mistake.
+set -euo pipefail
+
+config="${XDG_CONFIG_HOME:-$HOME/.config}/bento/setups.json"
+state="$HOME/.local/state/bento"
+state_file="$state/setup.json"
+request="$state/setup-request.json"
+sys=${BENTO_SYS:-/sys} # tests point this at a fake tree
+# Words that mean a command, so they can't name a setup (or be an id).
+reserved="auto pick save why apply status help"
+
+die() { echo "$*" >&2; exit 1; }
+usage() { sed -n 's/^#   \(bento setup\)/\1/p' "$(readlink -f "${BASH_SOURCE[0]}")"; }
+usage_error() { usage >&2; exit 2; }
+# The words of a name as one line, without spaces around it.
+one_name() { local n="$*"; n=${n//[[:cntrl:]]/ }; sed 's/^ *//; s/ *$//' <<<"$n"; }
+json_list() { jq -cn '$ARGS.positional' --args "$@"; }
+
+need_state() {
+  [[ -f $state_file ]] || die "Bento isn't running in Hyprland"
+  jq -e 'type == "object"' "$state_file" >/dev/null 2>&1 || die "Bento's state file can't be read: $state_file"
+}
+
+# One setup change at a time, whether it comes from a bar, the app or the
+# command line; the app writes setups.json under the same lock. Without flock,
+# or when the lock file can't be opened, nothing waits.
+setup_lock() {
+  command -v flock >/dev/null || return 0
+  { exec 8>"${XDG_RUNTIME_DIR:-/tmp}/bento-setup.lock"; } 2>/dev/null || return 0
+  flock -w 30 8 || die "Another setup change is still running; try again"
+}
+
+# setups.json as an object, or {} when it's missing or broken (the state file
+# says what was wrong with it).
+setups_file() { jq -c 'if type == "object" then . else {} end' "$config" 2>/dev/null || echo '{}'; }
+
+# The setups in setups.json as a JSON list, so that a rename or a delete shows
+# before Hyprland loads the file again: [] when there's no file, and null when
+# it can't be read (the state file's list, from the last load, stands in).
+saved_setups() {
+  [[ -f $config ]] || { echo '[]'; return; }
+  jq -cs 'if length == 1 and (.[0] | type) == "object" and (.[0].setups // [] | type) == "array"
+    then [(.[0].setups // [])[] | objects | select(.id | type == "string")] else null end' "$config" 2>/dev/null || echo null
+}
+
+# Shared jq. `table` lines up rows of cells in columns. `outside` is a saved
+# setup's external displays, by label. `in_use` says how the active setup got
+# chosen. `rows` are the setups to show and choose from: setups.json's, named
+# as it names them now, with what the last load found about each (one it
+# hasn't seen yet has "checked": false); the state's own list when setups.json
+# can't be read. `failed_since` is any failed check since a load, `failed_of`
+# that setup's, and `verdict` judges a write to setups.json (check_or_restore).
+jq_lib='
+  def table: (map(length) | max // 0) as $n
+    | (reduce .[] as $row ([]; [range(0; $n) as $i | [.[$i] // 0, ($row[$i] // "" | length)] | max])) as $width
+    | .[] | [range(0; length) as $i | .[$i] + if $i < length - 1 then " " * ($width[$i] - (.[$i] | length) + 2) else "" end]
+    | join("") | sub(" +$"; "");
+  def outside: (.displays // []) | map(objects | select(.display != "internal") | .label // .display | tostring) | join(", ");
+  def in_use: "in use (" + (if .reason == "hand" then "by hand" else "automatic" end) + ")";
+  def rows: (.setups // []) as $checked
+    | if $saved == null then [$checked[] | objects | . + {name: (.name // .id | tostring)}]
+      else [$saved[] | .id as $id
+        | ([$checked[] | objects | select(.id == $id)][0] // {checked: false, usable: false, note: "Not checked yet"})
+          + {id: $id, name: ((.name // "" | tostring | select(. != "")) // $id)}] end;
+  def name_of($id): [rows[] | select(.id == $id) | .name][0] // [(.setups // [])[] | select(.id == $id) | .name // .id][0];
+  def failed_since($before): (if .check.load == .load and .check.state == "failed" then .check.detail // ""
+      elif (.last_failure.load // 0) > $before then .last_failure.detail // ""
+      else null end) | if . == "" then "The check failed" else . end;
+  def failed_of($before; $id): (if .check.load == .load and .check.state == "failed" and .active == $id then .check.detail // ""
+      elif (.last_failure.load // 0) > $before and .last_failure.id == $id then .last_failure.detail // ""
+      elif any((.setups // [])[]; .id == $id and .failed == true) then ""
+      else null end) | if . == "" then "The check failed" else . end;
+  def verdict($before; $ids; $marks):
+    (if (.last_failure.load // 0) > $before then .last_failure
+     elif .check.load == .load and .check.state == "failed" then {load: .load, id: .active, detail: .check.detail}
+     else null end) as $f
+    | (if $marks then [(.setups // [])[] | select(.failed == true and IN(.id; $ids[]))] else [] end) as $mine
+    | ($f.detail // "" | if . == "" then "The check failed" else . end) as $detail
+    | if $mine != [] then
+        ["mine", 0, "no", if $f != null and IN($f.id; $mine[].id) then $detail
+                          else ($mine[0].name // $mine[0].id | tostring) + " failed its check" end]
+      elif $f == null then ["ok", 0, "no", ""]
+      elif $f.id != null and IN($f.id; $ids[]) then ["mine", 0, "no", $detail]
+      elif $f.load < .load and .check.load == .load and .check.state != "pending" then ["ok", 0, "no", ""]
+      elif $f.id == null then ["guard", 0, "no", $detail]
+      else ["other", $f.load, if $f.load < .load or (.stopped == null and (.retry | type) == "string") then "yes" else "no" end,
+            (name_of($f.id) // $f.id | tostring) + " failed its check: " + $detail] end
+    | map(tostring | gsub("[\t\n]"; " ")) | join("\t");
+'
+
+# jq over the state file, with the shared jq and setups.json's setups as
+# $saved: state_jq PROGRAM [jq options...]
+state_jq() {
+  local program=$1
+  shift
+  jq -r --argjson saved "$(saved_setups)" "$@" "$jq_lib$program" "$state_file"
+}
+
+# Omarchy holds Hyprland's reloads while it updates packages. A choice can't
+# wait for that. A saved setups.json can, as with Settings: Omarchy reloads
+# when the update finishes, and setups.lua checks the setups at that load.
+held_reason="Omarchy is installing updates; try again when it's done"
+on_hold="Hyprland reloads are on hold for an update; the change applies when it finishes"
+held() { command -v omarchy-hyprland-reload-guard >/dev/null && omarchy-hyprland-reload-guard paused; }
+
+# Where the state file is now: the load a reload has to get past
+# ($before_load), and the setups.json that load read ($before_config). It's
+# read before a request is written, so a load that takes the request is
+# always newer.
+asked=
+before_load=0
+before_config=
+mark() {
+  local now
+  now=$(jq -r '"\(.load // 0)\t\(.config // "")"' "$state_file" 2>/dev/null) || now=
+  before_load=${now%%$'\t'*}
+  before_config=${now#*$'\t'}
+  [[ $before_load =~ ^[0-9]+$ ]] || { before_load=0; failure="Bento isn't running in Hyprland"; return 1; }
+}
+
+# Hyprland: reload, then wait for setups.lua to finish that load's check.
+reload_and_wait() {
+  answered=no
+  if held; then failure=$held_reason; return 1; fi
+  [[ -n $asked ]] || mark || return 1
+  hyprctl reload >/dev/null 2>&1 8>&- || { failure="Hyprland didn't answer"; return 1; }
+  wait_check
+}
+
+# Wait, up to 10 s, for a load newer than $before_load whose check is in, and
+# which took the request if there is one (a load that was already under way
+# may have missed it). The load that takes the request deletes the file early
+# and says so in `request_load` only when it writes the state, so the file
+# being gone isn't enough. 10 s covers a check that fails (up to 3.3 s),
+# setups.lua's reload at once without that setup, and that load's check; the
+# failed state shows only briefly, so `last_failure` (newer than $before_load)
+# is what tells of it. When time runs out after a check failed, that failure
+# is the answer. Otherwise $failure says why, and $answered whether Bento's
+# Lua ran at all.
+wait_check() {
+  local i
+  answered=no
+  for ((i = 0; i < 100; i++)); do
+    sleep 0.1
+    case $(jq -r --argjson before "$before_load" --arg asked "$asked" '
+      if (.load // 0) <= $before then "old"
+      elif $asked != "" and (.request_load // 0) <= $before then "pending"
+      elif .check.load == .load and .check.state != "pending" then "in"
+      else "pending" end' "$state_file" 2>/dev/null) in
+      in) answered=yes; [[ -n $asked && -e $request ]] || return 0 ;;
+      pending) answered=yes ;;
+    esac
+  done
+  if [[ $answered == yes ]]; then
+    if ! [[ -n $asked && -e $request ]] \
+      && state_jq 'failed_since($before) != null' -e --argjson before "$before_load" >/dev/null 2>&1; then
+      return 0
+    fi
+    failure="Hyprland didn't answer"
+  else
+    failure="Bento isn't running in Hyprland"
+  fi
+  return 1
+}
+
+# Ask setups.lua for a setup by hand ({"hand": "<id>"}) or for automatic
+# ({"hand": null}). It reads and deletes the request at the next load.
+ask() { # JSON value
+  mark || die "$failure"
+  mkdir -p "$state"
+  jq -n --argjson hand "$1" '{hand: $hand}' > "$request.tmp.$$"
+  mv "$request.tmp.$$" "$request"
+  asked=yes
+}
+
+# Reload and see a request through. A request nobody read would be picked up
+# at some later load, so it goes.
+send() {
+  reload_and_wait && return 0
+  rm -f "$request"
+  die "$failure"
+}
+
+# bento setup: one row per setup, with why it is or isn't in use.
+list() {
+  state_jq '
+    . as $s
+    | ($saved // [] | map({key: .id, value: .}) | from_entries) as $file
+    | [rows[]
+        | if .id == $s.active then [.name, ($file[.id] | outside), ($s | in_use)]
+          else [.name, .note // ""] end] as $rows
+    | [if $rows == [] then "No setups yet. Save what is connected, and how it is arranged, with: bento setup save <name>"
+       elif .active == null then
+         if .stopped then "None in use: even the fallback failed its check with these devices."
+         else "None in use: no setup matches what is connected." end
+       else empty end,
+       (.hand_error // empty | "Your last choice was refused: " + .),
+       (if .check.load == .load and .check.state == "failed" then "Last check failed: " + (.check.detail // "") else empty end),
+       (if (.problems // []) != [] then "Problems in setups.json:", (.problems[] | "  " + tostring) else empty end)] as $notes
+    | ($rows | table), (if $rows != [] and $notes != [] then "" else empty end), $notes[]
+  '
+}
+
+# USB devices as "vvvv:pppp<TAB>product", read from sysfs.
+usb_products() {
+  local d
+  for d in "$sys"/bus/usb/devices/*; do
+    [[ -f $d/idVendor && -f $d/idProduct ]] || continue
+    printf '%s:%s\t%s\n' "$(<"$d/idVendor")" "$(<"$d/idProduct")" "$(cat "$d/product" 2>/dev/null)"
+  done
+}
+
+# bento setup why: the devices setups can be told apart by, then how every
+# setup scored against them, the choice and the last check.
+why() {
+  need_state
+  state_jq '
+    . as $s
+    | ([($saved // [])[] | (.when // [])[] | objects | select(.usb | type == "string")
+        | {key: (.usb | ascii_downcase), value: (.label // "")}] | from_entries) as $named
+    | ($usb | split("\n") | map(select(. != "") | split("\t") | {key: .[0], value: (.[1] // "")}) | from_entries) as $products
+    | [((.devices.displays // [])[]
+        | . as $d
+        | ["display", .display, .label // "",
+           (.connectors // [] | map(if $d.tiled and . == $d.left then . + " (left tile)" else . end) | join(", "))
+           + (if .tiled and .complete == false then ", a tile is missing" else "" end)]),
+       ((.devices.thunderbolt // [])[] | ["thunderbolt", .thunderbolt, .label // "Thunderbolt device"]),
+       ((.devices.usb // [])[] | select($named[.] != null)
+        | ["usb", ., ([$named[.], $products[.]] | map(select(. != null and . != "")) | .[0] // "USB device")])] as $devices
+    | [rows[]
+        | if .checked == false then [.name, .id, "not checked yet"]
+          else [.name, .id,
+            (if (.score // 0) == 0 then "fallback" elif .matches then "matches (score \(.score))" else "no match (score \(.score))" end),
+            (if .usable then "usable" else "not usable" end) + (if .failed then ", failed" else "" end),
+            .note // ""] end] as $setups
+    | {auto: "best match", hand: "chosen by hand, until a display or dock changes",
+       fallback: "nothing else matches", none: "nothing matches"} as $reasons
+    | [["Fingerprint", .devices.fingerprint // ""],
+       ["In use", (if .active then name_of(.active) // .active else "none" end) + " (" + ($reasons[.reason] // .reason // "?") + ")"],
+       ["Last check", (.check // null | if . == null then "none yet"
+          else "\(.state) (load \(.load))" + (if (.detail // "") != "" then ": " + .detail else "" end) end)],
+       (.hand_error // empty | ["Refused", .]),
+       (.stopped // empty | ["Stopped", "even the fallback failed its check with these devices"]),
+       ((.problems // []) | to_entries[] | [if .key == 0 then "Problems" else "" end, .value | tostring])] as $facts
+    | "Connected",
+      (if $devices == [] then "  nothing Bento tells setups apart by" else $devices | table | "  " + . end),
+      "", "Setups",
+      (if $setups == [] then "  none yet" else $setups | table | "  " + . end),
+      "", ($facts | table)
+  ' --arg usb "$(usb_products)"
+}
+
+# The active setup in a few words, from the state file.
+summary() {
+  state_jq 'if .active then (name_of(.active) // .active) + " · " + in_use else "No setup in use" end'
+}
+
+# bento setup <name|id>: hold that setup until a display or dock changes. The
+# name is looked up in setups.json; one Hyprland hasn't loaded yet is asked
+# for all the same, and setups.lua judges it at the reload.
+choose() { # name or id
+  need_state
+  local found id name note
+  found=$(state_jq '
+    [rows[]] as $all
+    | ([$all[] | select((.name | ascii_downcase) == ($want | ascii_downcase))] + [$all[] | select(.id == $want)])[0]
+    | if . == null then "unknown"
+      else [(if .checked == false or .usable then "ok" else "unusable" end), .id, .name, .note // ""] | join("\t") end
+  ' --arg want "$1")
+  [[ $found != unknown ]] || die "No setup called '$1'"
+  IFS=$'\t' read -r found id name note <<<"$found"
+  [[ $found == ok ]] || die "$name · ${note:-Not usable with what is connected}"
+  hand "$id" "$name"
+}
+
+# Only that setup's own failure counts: setups.lua may be retrying without
+# another one that failed meanwhile.
+hand() { # id name
+  setup_lock
+  ask "$(jq -n --arg id "$1" '$id')"
+  send
+  local result detail
+  result=$(state_jq '
+    if .hand_error then "refused\t" + (.hand_error | tostring)
+    elif failed_of($before; $id) then "failed\t" + failed_of($before; $id)
+    elif .active == $id then "ok\t"
+    else "other\t" + (name_of(.active) // .active // "none") end' --arg id "$1" --argjson before "$before_load")
+  detail=${result#*$'\t'}
+  case ${result%%$'\t'*} in
+    ok) echo "$2 · in use" ;;
+    refused) die "$2 · $detail" ;;
+    failed) die "$2 · failed its check${detail:+: $detail}" ;;
+    *) die "$2 isn't in use; in use: $detail" ;;
+  esac
+}
+
+# bento setup auto: back to the best match.
+automatic() {
+  need_state
+  setup_lock
+  ask null
+  send
+  local detail
+  detail=$(state_jq 'failed_since($before) // empty' --argjson before "$before_load")
+  [[ -z $detail ]] || die "Automatic · failed its check: $detail"
+  state_jq '"Automatic · " + if .active then "now: " + (name_of(.active) // .active) else "no setup matches what is connected" end'
+}
+
+# bento setup pick: Omarchy's menu with Automatic and every setup that can be
+# used. omarchy-menu-select waits forever when no menu plugin is enabled (the
+# shell answers "unknown" and nothing ever writes its done file), so this
+# speaks its protocol itself: summon the menu with a selection file and a done
+# file, check the shell's answer, and give up after a minute. Without a menu it
+# prints the list and how to choose instead.
+pick() {
+  need_state
+  local ids=() names=() rows=() answers=() id name note answer i payload
+  while IFS=$'\t' read -r id name note; do
+    ids+=("$id")
+    names+=("$name")
+    rows+=($'\t'"$name"$'\t'"$note") # no glyph; the note shows under the name
+    answers+=("$name${note:+$'\t'$note}") # what the menu hands back for that row
+  done < <(state_jq '
+    def clean: tostring | gsub("[\t\n]"; " ");
+    ["auto", "Automatic", if .active then "now: " + (name_of(.active) // .active) else "nothing matches now" end],
+    (rows[] | select(.checked != false and .usable) | [.id, .name, .note // ""])
+    | map(clean) | join("\t")')
+  [[ $(state_jq 'rows | length') != 0 ]] || die "No setups yet. Save what is connected with: bento setup save <name>"
+
+  menu=$(mktemp -d)
+  trap 'rm -rf "$menu"' EXIT
+  payload=$(jq -cn --arg dir "$menu" '{mode: "select", prompt: "Setup", options: $ARGS.positional,
+    selectionFile: ($dir + "/selection"), doneFile: ($dir + "/done"), width: 400}' --args "${rows[@]}")
+  answer=
+  if command -v omarchy-menu-select >/dev/null && command -v omarchy-shell >/dev/null; then
+    answer=$(omarchy-shell shell summon omarchy.menu "$payload" 2>/dev/null) || answer=
+  fi
+  if [[ $answer != ok ]]; then
+    echo "Omarchy's menu isn't available, so here is the list." >&2
+    list
+    echo
+    echo "Choose with: bento setup <name>, or bento setup auto"
+    exit 1
+  fi
+  # Stopping before it answers (Ctrl+C, or a minute) closes the menu too, so it
+  # isn't left up, wired to a folder that's about to go.
+  trap 'omarchy-shell -q shell hide omarchy.menu || true; exit 130' INT
+  trap 'omarchy-shell -q shell hide omarchy.menu || true; exit 143' TERM
+  for ((i = 0; i < 1200; i++)); do
+    [[ -e $menu/done ]] && break
+    sleep 0.05
+  done
+  if [[ ! -e $menu/done ]]; then
+    omarchy-shell -q shell hide omarchy.menu || true
+    die "Omarchy's menu didn't answer within a minute"
+  fi
+  trap - INT TERM # the menu is closed; whatever is showing now isn't ours
+  [[ -s $menu/selection ]] || exit 0 # closed without choosing
+  answer=$(<"$menu/selection")
+  for i in "${!answers[@]}"; do
+    [[ ${answers[i]} == "$answer" ]] || continue
+    if [[ ${ids[i]} == auto ]]; then automatic; else hand "${ids[i]}" "${names[i]}"; fi
+    return
+  done
+  die "Omarchy's menu answered with something that isn't on the list: $answer"
+}
+
+# setups.json, atomically, keeping the old one as setups.json.prev for
+# rollback. With no old file there's nothing to go back to, so a stale .prev
+# goes too: rolling back then deletes setups.json.
+write_setups() { # JSON text
+  mkdir -p "$(dirname "$config")"
+  if [[ -f $config ]]; then cp "$config" "$config.prev"; else rm -f "$config.prev"; fi
+  printf '%s\n' "$1" > "$config.tmp.$$"
+  mv "$config.tmp.$$" "$config"
+}
+
+# Whether setups.json and setups.json.prev were written together (within
+# 10 s), as the app and write_setups do: then .prev is the file it replaced.
+# Anything else is an edit by hand, and .prev is older than that, or missing.
+written_together() {
+  local new old
+  [[ -f $config && -f $config.prev ]] || return 1
+  new=$(date -r "$config" +%s) && old=$(date -r "$config.prev" +%s) || return 1
+  (( new >= old && new - old <= 10 ))
+}
+
+# The ids of the setups in setups.json, and of those that differ from
+# setups.json.prev (changed, added or deleted), as JSON lists.
+all_ids() { jq -c '[(objects | .setups // [])[]? | objects | .id | strings]' "$config" 2>/dev/null || echo '[]'; }
+changed_ids() {
+  jq -cn --slurpfile old "$config.prev" --slurpfile new "$config" '
+    def by_id: [(objects | .setups // [])[]? | objects | select(.id | type == "string") | {key: .id, value: .}] | from_entries;
+    ($old[0] | by_id) as $o | ($new[0] | by_id) as $n
+    | [($n | keys_unsorted[]) as $k | select($o[$k] != $n[$k]) | $k]
+      + [($o | keys_unsorted[]) as $k | select($n | has($k) | not) | $k]' 2>/dev/null || all_ids
+}
+
+# Put setups.json.prev back, or delete setups.json if there was none before.
+# "announce" keeps the one that failed as setups.json.rejected, and says so.
+restore() { # restore|announce
+  if [[ $1 == announce && -f $config ]]; then cp "$config" "$config.rejected"; fi
+  if [[ -f $config.prev ]]; then
+    cp "$config.prev" "$config.tmp.$$"
+    mv "$config.tmp.$$" "$config"
+    [[ $1 != announce ]] || echo "setups.json is back to the previous version; the one that failed is in setups.json.rejected" >&2
+  else
+    rm -f "$config"
+    [[ $1 != announce ]] || echo "setups.json was removed; the one that failed is in setups.json.rejected" >&2
+  fi
+}
+
+# Reload and wait for the check of a write to setups.json that touched the
+# setups in $1 (a JSON list of ids). Only their own failure counts. When
+# another setup failed, setups.lua is already trying again without it, so this
+# waits for that load and judges it. When only the tile guard failed,
+# setups.json has nothing to do with it. Either way it says so on stderr. If
+# one of them failed, or nothing answered, $2 says what becomes of the file:
+# "restore" puts the old one back (this run wrote it), "announce" does too but
+# keeps the new one as setups.json.rejected and says so, "keep" leaves it
+# (setups.lua has already moved on without that setup). After putting the old
+# one back it reloads again, if Bento is there to hear it. The reason is left
+# in $detail.
+check_or_restore() { # ids, restore|announce|keep
+  local ids=$1 how=$2 marks=false round verdict load wait
+  if ! reload_and_wait; then
+    detail=$failure
+  else
+    # A setup's failed mark is only news if setups.json changed: the marks
+    # are for one version of it.
+    [[ $(jq -r '.config // ""' "$state_file" 2>/dev/null) == "$before_config" ]] || marks=true
+    for round in 1 2 3; do
+      verdict=$(state_jq 'verdict($before; $ids; $marks)' --argjson before "$before_load" \
+        --argjson ids "$ids" --argjson marks "$marks" 2>/dev/null) || verdict=
+      IFS=$'\t' read -r verdict load wait detail <<<"$verdict"
+      case $verdict in
+        ok) return 0 ;;
+        guard) echo "A display didn't come out right: $detail" >&2; return 0 ;;
+        other)
+          if [[ $wait == yes ]] && (( round < 3 )); then
+            before_load=$load
+            wait_check && continue
+          fi
+          echo "$detail" >&2
+          return 0
+          ;;
+        mine) break ;;
+        *) detail="Bento's state file can't be read: $state_file"; break ;;
+      esac
+    done
+  fi
+  [[ $how != keep ]] || return 1
+  restore "$how"
+  [[ $answered == no ]] || reload_and_wait || true
+  return 1
+}
+
+# Problems in setups.json that the last load found and $1 (a JSON list) didn't.
+new_problems() { jq -r --argjson before "$1" '(.problems // []) - $before | .[] | "setups.json: " + tostring' "$state_file" >&2; }
+
+# bento setup apply: the app just wrote setups.json, keeping the old one as
+# setups.json.prev. If one of the setups it changed fails its check, or the
+# check can't be done, this exits 1 with the old file back in place and the
+# new one as setups.json.rejected. Only a file written together with its
+# .prev is put back. Anything else is an edit by hand: that stays as it is,
+# and any setup in it that fails counts. So does a file that isn't JSON at
+# all. While Omarchy holds reloads, the file stays and is applied later.
+apply() {
+  local problems ids how=keep
+  if [[ -f $config ]] && ! jq -e . "$config" >/dev/null 2>&1; then
+    die "$config isn't valid JSON; fix it and try again (nothing was applied)"
+  fi
+  setup_lock
+  if held; then echo "$on_hold" >&2; exit 0; fi
+  if written_together; then how=announce; ids=$(changed_ids); else ids=$(all_ids); fi
+  problems=$(jq -c '.problems // []' "$state_file" 2>/dev/null) || problems='[]'
+  if ! check_or_restore "$ids" "$how"; then
+    [[ $how != keep ]] || echo "setups.json stays as it is: only a file the app has just written is put back" >&2
+    die "$detail"
+  fi
+  new_problems "$problems"
+  summary
+}
+
+# Whether an EDID file holds one that hypr/edid.lua can parse: at least 128
+# bytes, starting with the fixed header. sysfs says its size is 0, so it's
+# read.
+has_edid() { # path
+  [[ $(od -An -tx1 -N8 -w8 "$1" 2>/dev/null) == " 00 ff ff ff ff ff ff 00" ]] \
+    && (( $(wc -c 2>/dev/null <"$1" || echo 0) >= 128 ))
+}
+
+# bento setup save <name>: one entry per lit display, from Hyprland's monitors
+# (position, scale, mode, rotation) and the state file (which display is on
+# which connector, tiles, panel sizes, Omarchy's scale). It's identified by
+# the external displays connected, plus the Thunderbolt devices when another
+# setup has the very same displays.
+#
+# An output that isn't showing a real picture is never a display of its own:
+# 0x0 (a tile coming or going), 640x480 anywhere but on a plain display Bento
+# knows (what a tiled display's other stream shows when the dock carries one,
+# and DisplayPort's fallback without an EDID), or one Bento turned off at the
+# last load (Hyprland may list it all the same). A tiled display is one entry,
+# from its left tile when that shows a picture. A known display with no
+# picture at all can't be placed, so save waits for it. A lit display without
+# an EDID Bento can read can't be recognised, so it's left out, with a
+# warning.
+save() { # name
+  local name=$1 file monitors phys=() connected=() blind=() f c id built ids
+  need_state
+  setup_lock
+  if [[ -f $config ]]; then
+    jq -e 'type == "object" and (.version // 1) == 1 and (.setups // [] | type == "array")' "$config" >/dev/null 2>&1 \
+      || die "$config isn't a setups file this Bento can read; fix or move it first"
+  fi
+  file=$(setups_file)
+  monitors=$(hyprctl monitors -j 2>/dev/null 8>&-) && jq -e 'type == "array"' <<<"$monitors" >/dev/null 2>&1 \
+    || die "Hyprland didn't answer"
+
+  # Connectors the kernel has, the ones with a display plugged in, and those
+  # whose display gives no EDID that setups.lua could read.
+  for f in "$sys"/class/drm/card*-*/status; do
+    [[ -f $f ]] || continue
+    c=${f%/status}; c=${c##*/}; c=${c#card*-}
+    phys+=("$c")
+    [[ $(<"$f") == connected ]] || continue
+    connected+=("$c")
+    has_edid "${f%/status}/edid" || blind+=("$c")
+  done
+
+  ids=$(jq -r '[.setups[]?.id? | strings] | join(" ")' <<<"$file")
+  id=$(new_id "$ids")
+  built=$(jq --arg name "$name" --arg id "$id" --argjson file "$file" --argjson monitors "$monitors" \
+    --argjson phys "$(json_list "${phys[@]}")" --argjson connected "$(json_list "${connected[@]}")" \
+    --argjson blind "$(json_list "${blind[@]}")" '
+    def snap: . * 20 | round / 20;
+    def identity: if has("display") then "display:" + .display elif has("thunderbolt") then "tb:" + .thunderbolt
+      elif has("usb") then "usb:" + .usb else empty end;
+    def they($list; $one; $more): if ($list | length) == 1 then $one else $more end;
+    . as $s
+    # The output of a display that is not tiled: its first connector (the
+    # rest are phantoms). One with no native size is a tiled display that
+    # setups.lua could not size yet (its left tile has no modes): none of
+    # its connectors is a picture at 640x480.
+    | [($s.devices.displays // [])[] | objects | select(.tiled != true and (.native | type) == "array")
+        | (.connectors // [])[0] | strings] as $plain
+    | def picture: (.width // 0) > 0 and (.height // 0) > 0 and (.scale // 0) > 0
+        and ([.width, .height] != [640, 480] or IN(.name; $plain[]));
+    ($file.setups // [] | map(objects)) as $others
+    | [($s.requested.monitors // [])[]? | objects | select(.disabled == true) | .output] as $off
+    | [$monitors[] | objects
+        | select((.disabled | not) and (.mirrorOf // "none") == "none" and (IN(.name; $off[]) | not))] as $listed
+    | [$listed[] | select(picture)] as $lit
+    | [($s.devices.displays // [])[] | (.connectors // [])[]] as $known
+    | [$lit[] | select((IN(.name; $known[]) | not) and IN(.name; $phys[])) | .name] as $unlisted
+    | [$unlisted[] | select(IN($blind[]))] as $unnamed
+    | [$unlisted[] | select(IN($blind[]) | not)] as $unknown
+    # Each display with the output that shows it, if any: the left tile when
+    # it shows a picture.
+    | [($s.devices.displays // [])[] | objects | . as $d | (.connectors // []) as $outputs
+        | {d: ., m: ([$lit[] | select(IN(.name; $outputs[]))] | sort_by(.name != $d.left) | .[0]),
+           listed: any($listed[]; IN(.name; $outputs[]))}] as $placed
+    | [$placed[] | select(.m == null and .listed) | .d.label // .d.display] as $dark
+    | if any($others[]; (.name // "" | ascii_downcase) == ($name | ascii_downcase)) then
+        {error: "There is already a setup called \u0027\($name)\u0027"}
+      elif $unknown != [] then
+        {error: "Bento hasn\u0027t caught up with \($unknown | join(", ")) yet; try again in a few seconds"}
+      elif $dark != [] then
+        {error: "\($dark | join(", ")) \(they($dark; "isn\u0027t"; "aren\u0027t")) showing a picture yet, so \(they($dark; "it"; "they")) can\u0027t be saved; try again when \(they($dark; "it is"; "they are"))"}
+      else
+        # One entry per display that is lit. A tiled display is one entry, at
+        # its left tile. scale is relative to the panel, and left out when it
+        # is what Omarchy would give anyway: laptop_scale for the laptop,
+        # external_scale (the catch-all) for the rest. mode only for a plain
+        # external display: setups.lua ignores it on the laptop, and picks a
+        # tiled display mode itself.
+        $s.laptop_scale as $laptop
+        | ($s.external_scale // $s.laptop_scale) as $external
+        | [$placed[] | select(.m != null) | .d as $d | .m as $m
+            | (if ($m.transform // 0) % 2 == 1 then [$m.height, $m.width] else [$m.width, $m.height] end) as $pixels
+            | ($d.native[0]? // 0 | if . > 0 then . else $m.width end) as $native_width
+            | ($m.scale * $native_width / $m.width | snap) as $relative
+            | (if $d.internal then $laptop == "auto"
+               elif ($external | type) == "number" then ($relative - $external | fabs) > 0.001
+               elif $d.tiled then ($relative - ([1, ($native_width / 2560 * 4 | round) / 4] | max) | fabs) > 0.001
+               else true end) as $keep
+            | {display: (if $d.internal then "internal" else $d.display end),
+               label: ($d.label // $m.description // $m.name),
+               native: $d.native,
+               size: [($pixels[0] / $m.scale | round), ($pixels[1] / $m.scale | round)],
+               tiles: (if $d.tiled then "single" else null end),
+               scale: (if $keep then $relative else null end),
+               at: [$m.x, $m.y],
+               transform: ($m.transform // 0),
+               mode: (if $d.internal or $d.tiled then null
+                      else "\($m.width)x\($m.height)"
+                        + (if ($m.refreshRate // 0) > 0 then "@\($m.refreshRate * 1000 | round / 1000)" else "" end) end),
+               primary: (if $m.focused then true else null end)}
+            | with_entries(select(.value != null))]
+        | sort_by(.at) as $displays
+        # Identified by every external display that is connected.
+        | [($s.devices.displays // [])[]
+            | select((.internal | not) and any((.connectors // [])[]; IN($lit[].name) or IN($connected[])))
+            | {display, label: (.label // .display)}] | unique_by(.display) as $when
+        | (if any($others[]; [(.when // [])[] | objects | .display // empty] | unique == ($when | map(.display)))
+           then $when + [($s.devices.thunderbolt // [])[] | {thunderbolt, label: (.label // "Thunderbolt device")}]
+           else $when end) as $when
+        | ($when | map(identity) | sort) as $identity
+        | [$others[] | select(((.when // []) | map(objects | identity) | sort) == $identity) | .name // .id] as $twins
+        | if $displays == [] then {error: "No display is lit, so there is nothing to save"}
+          else {file: ($file + {version: ($file.version // 1),
+                                setups: (($file.setups // []) + [{id: $id, name: $name, when: $when, displays: $displays}])}),
+                warnings: [if $twins != [] then "\($twins | join(", ")) has the same devices and comes first, so it wins whenever both match" else empty end,
+                           if $unnamed != [] then "\($unnamed | join(", ")) \(they($unnamed; "has"; "have")) no EDID Bento can read, so \(they($unnamed; "it"; "they")) can\u0027t be recognised and \(they($unnamed; "is"; "are")) left out of this setup" else empty end]}
+          end
+      end' "$state_file")
+  [[ $(jq -r '.error // empty' <<<"$built") == "" ]] || die "$(jq -r '.error' <<<"$built")"
+  jq -r '.warnings[]' <<<"$built" >&2
+  write_setups "$(jq '.file' <<<"$built")"
+  if held; then
+    echo "$id"
+    echo "Saved $name · $on_hold" >&2
+    return
+  fi
+  # Only the new setup failing makes it "not saved": when another one wins and
+  # fails, setups.lua moves on without that one.
+  check_or_restore "$(jq -cn --arg id "$id" '[$id]')" restore || die "Not saved: $detail"
+  echo "$id"
+  state_jq '"Saved \($name) · " + if .active == $id then "in use"
+    elif .active then "in use: " + (name_of(.active) // .active) else "no setup in use" end' --arg id "$id" --arg name "$name" >&2
+}
+
+# Four random characters that no setup uses, and that aren't a command.
+new_id() { # ids in use, space separated
+  local chars=abcdefghijklmnopqrstuvwxyz0123456789 id i
+  while :; do
+    id=
+    for i in 1 2 3 4; do id+=${chars:RANDOM%36:1}; done
+    [[ " $1 $reserved " == *" $id "* ]] || { echo "$id"; return; }
+  done
+}
+
+case ${1-} in
+  "")
+    (( $# == 0 )) || usage_error
+    need_state
+    list
+    ;;
+  auto|pick|why|apply|status)
+    (( $# == 1 )) || usage_error
+    case $1 in
+      auto) automatic ;;
+      pick) pick ;;
+      why) why ;;
+      apply) apply ;;
+      status) need_state; jq . "$state_file" ;;
+    esac
+    ;;
+  save)
+    shift
+    name=$(one_name "$@")
+    [[ -n $name ]] || usage_error
+    [[ " $reserved " != *" ${name,,} "* ]] || die "'$name' is a command, so it can't name a setup"
+    [[ $name != -* ]] || die "A name can't start with a dash"
+    save "$name"
+    ;;
+  help|-h|--help) usage ;;
+  -*) usage_error ;;
+  *)
+    name=$(one_name "$@")
+    [[ -n $name ]] || usage_error
+    choose "$name"
+    ;;
+esac

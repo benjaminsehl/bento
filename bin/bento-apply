@@ -2,20 +2,45 @@
 # Apply Bento's settings (defaults.json + ~/.config/bento/settings.json) to the
 # places outside Hyprland's Lua, then reload Hyprland:
 #
-#   pages.dots        the bar shows Bento's page dots instead of Omarchy's numbers
 #   terminal.ghostty  Ghostty includes Bento's Mac keys
 #
-# If Hyprland or one of Bento's modules reports errors, the previous settings
-# (settings.json.prev, kept by the Bento app) go back and Hyprland reloads again.
+# If the reload gives Hyprland, or one of Bento's modules, errors it didn't
+# have before, the previous file (NAME.prev, kept by the Bento app) goes back
+# and Hyprland reloads again. No NAME.prev means the app has just created the
+# file, so it goes.
+#
+#   bento-apply                        after settings.json changed
+#   bento-apply --file keyboards.json  after another file in ~/.config/bento did
+#   bento-apply --no-rollback          apply and reload, report errors, but
+#                                      leave every file alone: install.sh, which
+#                                      changes code, never settings
 set -euo pipefail
 
+usage() { echo "Usage: bento-apply [--file NAME] [--no-rollback]  (NAME: a file in ~/.config/bento, default settings.json)" >&2; exit 2; }
+name=settings.json
+rollback=yes
+while (( $# )); do
+  case $1 in
+    --file)
+      [[ -n ${2:-} && $2 != */* && $2 != . && $2 != .. ]] || usage
+      name=$2
+      shift 2
+      ;;
+    --no-rollback) rollback=no; shift ;;
+    *) usage ;;
+  esac
+done
+
 repo=$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd -P)
-config="${XDG_CONFIG_HOME:-$HOME/.config}/bento/settings.json"
+configdir="${XDG_CONFIG_HOME:-$HOME/.config}/bento"
+config="$configdir/settings.json"
+file="$configdir/$name"
 state="$HOME/.local/state/bento"
-shell_json="$HOME/.config/omarchy/shell.json"
-ghostty_config="$HOME/.config/ghostty/config"
+# The real file, if it is a symlink into a dotfiles repo: the temp file that
+# replaces it has to sit next to it.
+ghostty_config=$(readlink -f "$HOME/.config/ghostty/config" 2>/dev/null) || ghostty_config="$HOME/.config/ghostty/config"
+ghostty_mark="# Added by Bento: Mac keys under the Bento layout."
 ghostty_line="config-file = ?\"$repo/ghostty/bento.conf\""
-plugin="io.github.benjaminsehl.bento"
 
 setting() { # section key
   jq -r --arg s "$1" --arg k "$2" '(.[1][$s][$k]) as $u | (.[0][$s][$k]) as $d
@@ -23,49 +48,64 @@ setting() { # section key
     -s "$repo/defaults.json" <(cat "$config" 2>/dev/null || echo '{}')
 }
 
-# The bar: swap Omarchy's workspace numbers and Bento's dots (and the old
-# standalone Pages plugin) in whichever section they sit.
-legacy='"io.github.benjaminsehl.pages"'
-if [[ -f $shell_json ]]; then
-  if [[ $(setting pages dots) == true ]]; then from="[\"omarchy.workspaces\",$legacy]"; to=$plugin
-  else from="[\"$plugin\",$legacy]"; to=omarchy.workspaces; fi
-  new=$(jq --argjson from "$from" --arg to "$to" '
-    if .bar.layout then .bar.layout |= with_entries(.value |= map(if (.id as $id | $from | index($id)) then .id = $to else . end)) else . end' "$shell_json")
-  if [[ $new != "$(<"$shell_json")" ]]; then
-    cp "$shell_json" "$shell_json.bak.$(date +%s)"
-    printf '%s\n' "$new" > "$shell_json"
-  fi
-fi
-
-# Ghostty: include Bento's Mac keys after the user's own config, or take them out.
+# Ghostty: include Bento's Mac keys after the user's own config, or take them
+# out again with the comment and blank line that came with them.
 if [[ -f $ghostty_config ]]; then
   has=no; grep -qxF "$ghostty_line" "$ghostty_config" && has=yes
   want=no; [[ $(setting terminal ghostty) == true ]] && want=yes
-  if [[ $want == yes && $has == no ]]; then
-    printf '\n# Added by Bento: Mac keys under the Bento layout.\n%s\n' "$ghostty_line" >> "$ghostty_config"
-  elif [[ $want == no && $has == yes ]]; then
-    grep -vxF "$ghostty_line" "$ghostty_config" | grep -vxF "# Added by Bento: Mac keys under the Bento layout." > "$ghostty_config.bento-tmp"
-    mv "$ghostty_config.bento-tmp" "$ghostty_config"
-  fi
-  if [[ $want != "$has" ]] && command -v omarchy-restart-terminal >/dev/null; then
-    omarchy-restart-terminal >/dev/null 2>&1 || true
+  if [[ $want != "$has" ]]; then
+    tmp="$ghostty_config.tmp.$$"
+    if [[ $want == yes ]]; then
+      { cat "$ghostty_config"; printf '\n%s\n%s\n' "$ghostty_mark" "$ghostty_line"; } >"$tmp"
+    else
+      MARK=$ghostty_mark LINE=$ghostty_line awk '
+        { line[NR] = $0 }
+        END {
+          for (i = 1; i <= NR; i++) {
+            if (line[i] == ENVIRON["MARK"] || line[i] == ENVIRON["LINE"]) continue
+            if (line[i] == "" && line[i + 1] == ENVIRON["MARK"]) continue
+            print line[i]
+          }
+        }' "$ghostty_config" >"$tmp"
+    fi
+    chmod --reference="$ghostty_config" "$tmp" 2>/dev/null || true
+    mv -f "$tmp" "$ghostty_config"
+    if command -v omarchy-restart-terminal >/dev/null; then
+      omarchy-restart-terminal >/dev/null 2>&1 || true
+    fi
   fi
 fi
 
-# Hyprland: reload, and roll back if it, or a Bento module, complains.
+# Omarchy holds Hyprland's reloads while it updates packages, and reloads
+# itself when it is done; the new settings take effect then.
+if compgen -G "${OMARCHY_HYPRLAND_RELOAD_GUARD_STATE_DIR:-/run/omarchy/hyprland-reload-guard}/*" >/dev/null; then
+  echo "bento: Hyprland reloads are on hold for an update; the change applies when it finishes" >&2
+  exit 0
+fi
+
+# Hyprland: reload, and roll back if it, or a Bento module, has something new
+# to complain about. Errors that were there before aren't this change's.
+errors_before=$(hyprctl configerrors 2>/dev/null || true)
+modules_before=$(cat "$state/errors" 2>/dev/null || true)
+new_lines() { # before after: the lines of after that before doesn't have
+  grep -vxF -f <(printf '%s\n' "$1") <<<"$2" | grep -v '^[[:space:]]*$' || true
+}
 check() {
   hyprctl reload >/dev/null
   sleep 0.3
-  local errors
-  errors=$(hyprctl configerrors)
-  [[ -n ${errors//[[:space:]]/} ]] && { echo "$errors"; return 1; }
-  [[ -s $state/errors ]] && { cat "$state/errors"; return 1; }
-  return 0
+  local new
+  new=$(
+    new_lines "$errors_before" "$(hyprctl configerrors 2>/dev/null || true)"
+    new_lines "$modules_before" "$(cat "$state/errors" 2>/dev/null || true)"
+  )
+  [[ -z $new ]] || { echo "$new"; return 1; }
 }
 
 if ! errors=$(check); then
-  if [[ -f $config.prev ]]; then cp "$config.prev" "$config"; else rm -f "$config"; fi
-  check >/dev/null || true
+  if [[ $rollback == yes ]]; then
+    if [[ -f $file.prev ]]; then cp "$file.prev" "$file"; else rm -f "$file"; fi
+    check >/dev/null || true
+  fi
   echo "$errors" >&2
   exit 1
 fi

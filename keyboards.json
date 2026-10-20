@@ -1,0 +1,18 @@
+{
+  "3434:0233": {
+    "label": "Keychron K3 Pro",
+    "keymap": "apple",
+    "devices": ["keychron-keychron-k3-pro", "keychron-keychron-k3-pro-keyboard"]
+  },
+  "apple-magic-keyboard": {
+    "label": "Apple Magic Keyboard",
+    "keymap": "apple",
+    "ids": ["05ac:029a", "004c:029a"],
+    "devices": ["apple-inc.-magic-keyboard-with-touch-id"]
+  },
+  "laptop": {
+    "label": "Laptop keyboard",
+    "keymap": "pc",
+    "devices": ["at-translated-set-2-keyboard"]
+  }
+}

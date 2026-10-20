@@ -88,6 +88,8 @@ var panes = [
         detail: "A drag can't make a window narrower or shorter than this." }
     ]
   },
+  // Drawn by prefs/Setups.qml from setups.json, not from defaults.json.
+  { id: "setups", title: "Setups", rows: [] },
   {
     id: "terminal",
     title: "Terminal",

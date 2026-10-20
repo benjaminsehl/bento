@@ -24,6 +24,7 @@
   <a href="#tiles">Tiles</a> ·
   <a href="#gestures">Gestures</a> ·
   <a href="#keys">Keys</a> ·
+  <a href="#setups">Setups</a> ·
   <a href="#the-bento-app">App</a> ·
   <a href="#install">Install</a>
 </p>
@@ -108,6 +109,30 @@ and ⌥ types special characters. On top of that:
 
 Every key, what it replaced and why is in [`docs/keymap.md`](docs/keymap.md).
 
+## Setups
+
+A setup is a desk: how the displays are arranged there, and which keymap each
+keyboard gets. Arrange your displays the way you like them, then save the desk
+in the Bento app's Setups pane, or with `bento setup save Work`. From then on,
+plugging in brings it back.
+
+- Displays are known by their EDID, whatever port or dock they're on. When
+  one is missing, the others close up the gap.
+- Every change is checked against what Hyprland shows. When a setup doesn't
+  come out as saved, a notification says what differed, and Bento tries the
+  next best one. If that fails too, it stops until something is plugged in or
+  out. It never loops.
+- Once you have two setups, right-click the page dots to choose one by hand.
+  It holds until a display or dock changes. `bento setup pick` does the same
+  from the keyboard.
+- A setup can give a keyboard another keymap, like PC at work. Each keyboard
+  has its own in the Keyboard pane.
+- Tiled 5K displays such as the LG UltraFine run on one stream, scaled to
+  the whole panel, so a dock that can't carry two streams doesn't leave them
+  split or black. That works with or without a setup.
+
+The details are in [`docs/setups.md`](docs/setups.md).
+
 ## The Bento app
 
 One window, with a pane per area and a row per setting. Run `bento`, press ⌃⌘,
@@ -163,49 +188,82 @@ Bento needs Omarchy 4 or newer (the release that configures Hyprland in Lua).
 omarchy plugin add https://github.com/benjaminsehl/bento --enable
 ```
 
-The plugin runs [`install.sh`](install.sh) each time the shell starts. The
-first run hooks Bento into Hyprland, and later runs find everything in place
-and do nothing. If something stops it, a desktop notification says why.
+Bento runs only as an Omarchy plugin. The plugin runs
+[`install.sh`](install.sh) each time the shell starts Bento. The first run
+hooks Bento into Hyprland, and later runs find everything in place and do
+nothing. If something stops it, a desktop notification says why.
 
-`install.sh` also works from any checkout of this repo and points everything at
-that checkout, so to update you edit the files and run `hyprctl reload`.
-Re-run `install.sh` after changing `xkb/`. On the Magic Keyboard, the top row
-does what's printed on it without fn.
+To work on a checkout, link it as the plugin and enable it. `install.sh`
+refuses to run from any other folder, because Omarchy's disable and remove
+are what take Bento out again:
+
+```bash
+ln -s ~/path/to/bento ~/.config/omarchy/plugins/io.github.benjaminsehl.bento
+omarchy-shell shell rescanPlugins
+omarchy plugin enable io.github.benjaminsehl.bento
+```
+
+After that, editing the files and running `hyprctl reload` is the whole
+update; QML changes need `omarchy-restart-shell`. Re-run `install.sh` after
+changing `xkb/`. On the Magic Keyboard, the top row does what's printed on it
+without fn.
 
 <details>
-<summary>What the installer touches</summary>
+<summary>What Bento touches</summary>
 
 | Path | What it is |
 |---|---|
-| `~/.local/state/omarchy/toggles/hypr/bento.lua` | One line that loads `hypr/bento.lua` from the checkout |
-| `~/.local/state/bento/` | Compiled keymaps, and errors from the last reload |
+| `~/.local/state/omarchy/toggles/hypr/bento.lua` | A few lines that load `hypr/bento.lua` from the plugin folder, or start the cleanup once the folder is gone |
+| `~/.local/state/bento/` | Compiled keymaps, errors from the last reload, what Setups found and chose (`setup.json`, and briefly `setup-request.json`), a copy of `bin/bento-cleanup`, and where the checkout is (`repo`) |
 | `~/.local/bin/bento`, `bento-apply`, `mac-keybindings` | Links into `bin/` |
 | `~/.local/share/applications/bento.desktop` | The Bento app, in the launcher |
 | `~/.config/bento/settings.json` | Your settings |
-| `~/.config/omarchy/shell.json` | Page dots in place of Omarchy's workspace numbers (if on) |
+| `~/.config/bento/setups.json`, `keyboards.json` | Your setups and keymaps, once you save one; the app keeps the version before as `.prev`, and a setups change that failed as `setups.json.rejected` |
 | `~/.config/ghostty/config` | One `config-file` line for Bento's Ghostty keys (if on) |
+| `~/.config/omarchy/shell.json` | Only to take Bento out, the way Omarchy's disable does, when the plugin folder went away without one |
+| `$XDG_RUNTIME_DIR/bento.lock`, `bento-setup.lock`, `bento-spotify-starting` | Empty lock files, and a marker while F8 starts Spotify. The cleanup removes `bento-setup.lock`; the folder is emptied at logout |
 
-Nothing is written to `~/.config/hypr` or `/usr/share/omarchy`.
+Omarchy itself edits `shell.json` when you enable or disable Bento: Bento
+takes the place of its workspace numbers in the bar, and disabling puts them
+back. With the dots off, Bento shows those same numbers itself, so it doesn't
+touch `shell.json` for that. Nothing is written to `~/.config/hypr` or
+`/usr/share/omarchy`.
 
 </details>
 
 ## Remove
 
-Run the uninstaller first, or the plugin hooks Bento back in the next time the
-shell starts:
+Disabling or removing Bento in Omarchy gives back stock Omarchy by itself:
 
 ```bash
-~/.config/omarchy/plugins/io.github.benjaminsehl.bento/uninstall.sh
 omarchy plugin remove io.github.benjaminsehl.bento
 ```
 
-This puts Omarchy's own bindings and workspace numbers back. Your settings stay
-in `~/.config/bento`.
+Once Omarchy has settled, Bento's cleanup takes away its hook, links, launcher
+entry, state and Ghostty line, and reloads Hyprland, so Omarchy's own bindings
+and workspace numbers are back. If Omarchy is holding Hyprland reloads for an
+update, the hook stays until the reload that ends the hold, and does only
+that. If Bento kept a tiled display on one stream, a notification gives the
+`~/.config/hypr/monitors.lua` lines that keep it that way (Bento never writes
+there itself). Your settings, setups and keymaps stay in `~/.config/bento`.
+
+The uninstaller does the same by hand, for when the shell isn't running or
+you'd rather watch it happen. `--purge` deletes `~/.config/bento` too:
+
+```bash
+~/.config/omarchy/plugins/io.github.benjaminsehl.bento/uninstall.sh [--purge]
+omarchy plugin remove io.github.benjaminsehl.bento
+```
+
+If you updated from an older Bento in this session, restart the shell
+(`omarchy-restart-shell`) or run `uninstall.sh` before `omarchy plugin
+remove`: the shell keeps the older Bento's Service until it restarts.
 
 ## Docs
 
 - [`docs/keymap.md`](docs/keymap.md): every key and gesture, and why.
 - [`docs/pages.md`](docs/pages.md): pages, Overview and the drawer in detail.
+- [`docs/setups.md`](docs/setups.md): setups, per-desk display layouts and keymaps, and tiled displays.
 - [`defaults.json`](defaults.json) and [`prefs/Schema.js`](prefs/Schema.js): every setting.
 - [`docs/screenshots.sh`](docs/screenshots.sh): retakes the screenshots in this README.
 
@@ -216,5 +274,7 @@ in `~/.config/bento`.
 | Bar dots and previews | `pages/` (an Omarchy shell bar widget) |
 | Overview, the drawer, the Bento app | `overview/`, `drawer/`, `prefs/`, behind one overlay (`Overlay.qml`) |
 | Settings and applying them | `defaults.json`, `Settings.qml`, `hypr/settings.lua`, `bin/bento-apply` |
+| Setups and keyboards | `hypr/setups.lua` (with `edid.lua`, `sysfs.lua`, `json.lua`), `hypr/keyboard.lua`, `keyboards.json`, `bin/bento-setup`, `prefs/Setups*`, `prefs/Keyboards.qml`, `pages/SetupsMenu.qml` |
+| Plugging in and out of Omarchy | `manifest.json`, `Service.qml`, `install.sh`, `bin/bento-cleanup`, `uninstall.sh` |
 
 MIT licensed.

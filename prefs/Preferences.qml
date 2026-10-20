@@ -8,6 +8,8 @@ import "Schema.js" as Schema
 // The Bento app: one window, a sidebar of panes, and one row per setting.
 // Changes save and apply right away (bin/bento-apply); if Hyprland rejects
 // one, the previous settings come back and the error shows at the bottom.
+// The Setups pane and the Keyboard pane's Keyboards group edit Bento's setup
+// files instead, through SetupsStore, and report in the same footer.
 Item {
   id: root
 
@@ -24,11 +26,14 @@ Item {
   }
 
   Settings { id: settings }
+  SetupsStore { id: setups; repo: settings.repo; watching: root.opened }
 
   function open(payloadJson) {
     var payload = {}
     try { payload = JSON.parse(payloadJson || "{}") || {} } catch (e) {}
     if (payload.pane) root.pane = payload.pane
+    if (!setups.busy) setups.message = ""
+    setups.refresh()
     root.opened = true
     window.visible = true
     Qt.callLater(function() { keys.forceActiveFocus() })
@@ -60,6 +65,10 @@ Item {
   readonly property color fg: Color.foreground
   readonly property color dim: Qt.rgba(fg.r, fg.g, fg.b, 0.55)
   readonly property color hairline: Qt.rgba(fg.r, fg.g, fg.b, 0.1)
+
+  // The setup files' last outcome, shown on the pane it came from.
+  readonly property bool setupsSpeak: (setups.busy || setups.message !== "")
+    && setups.scope === (root.pane === "keyboard" ? "keyboards" : root.pane)
 
   FloatingWindow {
     id: window
@@ -186,6 +195,18 @@ Item {
         }
 
         Loader {
+          active: root.pane === "keyboard"
+          width: column.width
+          sourceComponent: keyboardsGroup
+        }
+
+        Loader {
+          active: root.pane === "setups"
+          width: column.width
+          sourceComponent: setupsPane
+        }
+
+        Loader {
           active: root.pane === "about"
           width: column.width
           sourceComponent: aboutPane
@@ -204,8 +225,10 @@ Item {
         anchors { verticalCenter: parent.verticalCenter; left: parent.left; right: parent.right; leftMargin: Style.spacing.panelPadding * 1.5; rightMargin: Style.spacing.panelPadding }
         text: settings.applying ? "Applying…"
             : settings.applyError ? "Not applied, so the previous setting is back: " + settings.applyError
+            : root.setupsSpeak ? (setups.busy ? setups.busyText : setups.message)
+            : root.pane === "setups" ? "Changes to the setup in use apply right away. Others are saved for next time."
             : "Changes apply right away."
-        color: settings.applyError ? Color.urgent : root.dim
+        color: settings.applyError || (root.setupsSpeak && !setups.busy && setups.failed) ? Color.urgent : root.dim
         elide: Text.ElideRight
         font.family: Style.font.family
         font.pixelSize: Style.font.bodySmall
@@ -327,6 +350,23 @@ Item {
         font.family: Style.font.family
         font.pixelSize: Style.font.body
       }
+    }
+  }
+
+  Component {
+    id: keyboardsGroup
+    Keyboards {
+      store: setups
+      macModifiers: settings.get("keyboard", "macModifiers") === true
+    }
+  }
+
+  Component {
+    id: setupsPane
+    Setups {
+      store: setups
+      macModifiers: settings.get("keyboard", "macModifiers") === true
+      onDoneTyping: keys.forceActiveFocus()
     }
   }
 
