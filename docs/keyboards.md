@@ -117,8 +117,10 @@ Where the field lives:
   `bento-setup` follow.
 
 Because a setup can change a keyboard's style, it changes that keyboard's
-bindings too. Setups changes are applied with a reload, so the bindings are
-built for the final styles once, at load.
+bindings too. Setups changes are applied with a reload, and `setups.lua`
+gives keyboards their keymaps during the load. So the bindings come from
+`hypr/keys.lua`, which runs after `setups.lua` and builds them once, for the
+final styles.
 
 ### What PC style keeps and adds
 
@@ -311,12 +313,22 @@ Each spike needs a live Hyprland, with a reload to undo it:
    still reach apps. What's left: bind the same key twice, `inclusive` for the
    K3 Pro and `inclusive = false` for the rest. Check that each keyboard fires
    only its own binding, and whether `hl.unbind` removes both.
+   *2026-10-20:* both bindings coexist, and one `hl.unbind` removes both, as
+   expected. `hyprctl binds -j` doesn't show device lists, so which keyboard
+   fires which binding still needs hands on the keys.
 2. **Re-adding Omarchy's bindings** from the recorded pass, limited to PC
    keyboards. Check that `~/.config/hypr/bindings.lua` still wins where you
    changed an Omarchy key there. Bento must only bring back a binding that was
    there when it unbound it.
+   *2026-10-20:* Lua has no way to list bindings. So Bento reads the files in
+   `~/.config/hypr` as text, without running them, and leaves alone every key
+   they bind or unbind. Your `bindings.lua` binds only `code:66` (Caps Lock,
+   Tonband).
 3. **Bindings added on focus**, on `window.active`: Ctrl+C in Ghostty from the
    Dell. Measure the delay, and check that holding Ctrl+W repeats.
+   *2026-10-20:* `hl.bind` returns a binding with `set_enabled`, so the
+   bindings are made once and switched on and off with focus. If one fires
+   outside a terminal anyway, it sends its key on unchanged.
 4. **Recording submap**: a FloatingWindow gets Super+→ and Ctrl+Alt+Esc while
    `bento-record` is active.
 5. **`main` in `hyprctl devices`** follows the keyboard last typed on. The
@@ -330,14 +342,19 @@ Each spike needs a live Hyprland, with a reload to undo it:
      `setups.json`, `lib.keyboards`, `bento-setup` and the panes, with the
      migration;
    - the Mac and PC binding sets, with Omarchy's bindings kept on PC keyboards;
-   - Caps Lock and F9 by style.
+   - Caps Lock and F9 by style;
+   - Ghostty's Linux keys on PC keyboards, brought forward from stage 4:
+     without them a PC-style laptop would lose ⌃C in the terminal.
 
-   The Dell becomes Omarchy plus Bento's extras.
+   The Dell becomes Omarchy plus Bento's extras. **Built**: the bindings are
+   in `hypr/keys.lua`, after `setups.lua`. `bento-setup` and the app write
+   styles, and `"keyboardValues": "style"`, on their first save.
 2. **The catalogue and keys.json.** Move every binding into the catalogue,
    and add your changes, `bento keys`, and generating `mac-keybindings` and
    the docs tables.
 3. **The Shortcuts list.** Recording, conflicts, search and group switches.
-4. **Ghostty on PC keyboards.**
+4. **Ghostty on PC keyboards.** Done in stage 1; what's left is the spike 3
+   results (repeat and latency on the Dell).
 5. **Per-setup keys:** a setup's `keys` block, edited in the Setups pane.
 
 ## Open questions

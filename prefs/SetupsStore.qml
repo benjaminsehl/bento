@@ -6,7 +6,7 @@ import "SetupsData.js" as Data
 // Bento's setup files for the app and the bar, read and written in one place:
 //
 //   ~/.config/bento/setups.json       your setups
-//   ~/.config/bento/keyboards.json    your keyboards' own keymaps
+//   ~/.config/bento/keyboards.json    your keyboards' own styles
 //   keyboards.json in the checkout    the built-in keyboards
 //   ~/.local/state/bento/setup.json   what Hyprland found and chose (Lua writes it)
 //
@@ -104,7 +104,7 @@ Item {
     if (p.error) { root.file = null; root.fileError = tilde(root.setupsPath) + " isn't valid JSON (" + p.error + "), so the app won't change it." }
     else if (p.value !== null && !(Data.isObject(p.value) && (p.value.setups === undefined || Array.isArray(p.value.setups)))) {
       root.file = null; root.fileError = tilde(root.setupsPath) + " isn't a setups file, so the app won't change it."
-    } else { root.file = p.value; root.fileError = "" }
+    } else { root.file = Data.withStyles(p.value); root.fileError = "" }
   }
 
   function takeState(text) {
@@ -116,7 +116,7 @@ Item {
     var p = Data.parse(text)
     if (p.error || (p.value !== null && !Data.isObject(p.value))) {
       root.userKeyboards = ({})
-      root.keyboardsError = tilde(root.keyboardsPath) + " can't be read, so only the built-in keymaps apply and the app won't change it."
+      root.keyboardsError = tilde(root.keyboardsPath) + " can't be read, so only the built-in styles apply and the app won't change it."
     } else { root.userKeyboards = p.value || ({}); root.keyboardsError = "" }
   }
 
@@ -194,6 +194,7 @@ Item {
   // back if Hyprland's check fails), unless `apply` is false (a rename); any
   // other one is only saved.
   function commit(next, id, note, apply) {
+    next = Data.withStyles(next)
     var active = apply !== false && root.activeId === id
     var name = Data.nameOf(next, root.setupState, id) || Data.nameOf(root.file, root.setupState, id)
     begin("setups", active ? "Applying…" : "Saving…")
@@ -210,7 +211,7 @@ Item {
         if (code === 127) root.restore(root.setupsPath, function() { root.finish(why, true) })
         else if (code !== 0) root.finish(why, true)
         // While Omarchy holds reloads for an update, the change waits for the
-        // reload that ends it: a note, as with keymaps, not a failure.
+        // reload that ends it: a note, as with keyboards, not a failure.
         else if (said.indexOf("reloads are on hold") !== -1) root.finish(said.charAt(0).toUpperCase() + said.slice(1) + ".", false)
         else if (said) root.finish("Applied. " + said, true)
         else root.finish(note || "Applied.", false)
@@ -220,11 +221,11 @@ Item {
 
   // -------------------------------------------------------------- keyboards
 
-  // A keyboard's own keymap, kept in your keyboards.json only where it
+  // A keyboard's own style, kept in your keyboards.json only where it
   // differs from the built-in file.
-  function setKeymap(id, keymap) {
-    if (root.busy || root.keyboardsError !== "" || !Data.validKeymap(keymap)) return
-    var next = Data.keyboardsWithKeymap(root.repoKeyboards, root.userKeyboards, id, keymap)
+  function setStyle(id, style) {
+    if (root.busy || root.keyboardsError !== "" || !Data.validStyle(style)) return
+    var next = Data.keyboardsWithStyle(root.repoKeyboards, root.userKeyboards, id, style)
     var label = id
     for (var i = 0; i < root.keyboards.length; i++) if (root.keyboards[i].id === id) label = root.keyboards[i].label
     begin("keyboards", "Applying…")
@@ -234,8 +235,8 @@ Item {
         // Without an error, bento-apply only writes to stderr when it has to
         // wait (Omarchy holds reloads during an update).
         var said = String(err).trim().split("\n")[0].replace(/^bento: /, "")
-        var why = "Not applied, so the previous keymap is back: " + (said || "bento-apply failed")
-        if (code === 0) root.finish(said ? said.charAt(0).toUpperCase() + said.slice(1) + "." : label + " uses the " + Data.keymapNames[keymap] + " keymap.", false)
+        var why = "Not applied, so the previous style is back: " + (said || "bento-apply failed")
+        if (code === 0) root.finish(said ? said.charAt(0).toUpperCase() + said.slice(1) + "." : label + " is " + Data.styleNames[style] + ".", false)
         else if (code === 127) root.restore(root.keyboardsPath, function() { root.finish(why, true) })
         else root.finish(why, true)
       })

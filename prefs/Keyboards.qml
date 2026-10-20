@@ -4,7 +4,7 @@ import qs.Ui
 import "SetupsData.js" as Data
 
 // The Keyboard pane's Keyboards group: every keyboard Bento knows (built in,
-// added by you, or seen by Hyprland) and the keymap it gets. The choice goes
+// added by you, or seen by Hyprland) and its style. The choice goes
 // to ~/.config/bento/keyboards.json, only where it differs from the built-in
 // keyboards.json, and applies like any other setting. A setup can override
 // it while it's in use; that's edited in the Setups pane.
@@ -17,7 +17,7 @@ Column {
   readonly property color fg: Color.foreground
   readonly property color dim: Qt.rgba(fg.r, fg.g, fg.b, 0.55)
   readonly property color hairline: Qt.rgba(fg.r, fg.g, fg.b, 0.1)
-  readonly property var options: Data.keymaps.map(function(k) { return { value: k, label: Data.keymapNames[k] } })
+  readonly property var options: Data.styles.map(function(k) { return { value: k, label: Data.styleNames[k] } })
 
   spacing: 0
 
@@ -40,8 +40,8 @@ Column {
     width: root.width
     wrapMode: Text.WordWrap
     text: root.macModifiers
-      ? "Which modifier row each keyboard has. Apple: ⌃ ⌥ ⌘ next to Space. PC: Ctrl, Win and Alt, used as ⌃ ⌥ ⌘. Omarchy: Omarchy's own layout, without Bento's keys."
-      : "Each keyboard's keymap is part of the Bento modifier layout, so there's nothing to choose while it's off."
+      ? "How each keyboard's shortcuts work. Mac: ⌃ ⌥ ⌘ next to Space, with Mac shortcuts. Mac on PC keys: the same shortcuts, with Ctrl, Win and Alt used as ⌃ ⌥ ⌘. PC: Omarchy's own keys, Super for the desktop and Ctrl for apps, with Bento's extras on Super."
+      : "The Bento modifier layout is off, so every keyboard is PC: Omarchy's own keys, with Bento's extras on Super."
     color: root.dim
     font.family: Style.font.family
     font.pixelSize: Style.font.bodySmall
@@ -102,7 +102,7 @@ Column {
         options: root.options
         value: keyboard.modelData.own
         enabled: root.store !== null && !root.store.busy && root.store.keyboardsError === ""
-        onChanged: function(v) { if (v !== keyboard.modelData.own) root.store.setKeymap(keyboard.modelData.id, v) }
+        onChanged: function(v) { if (v !== keyboard.modelData.own) root.store.setStyle(keyboard.modelData.id, v) }
       }
 
       Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: root.hairline }

@@ -108,12 +108,13 @@ os.execute("mkdir -p " .. lib.quote(lib.state))
 
 -- Order matters: keyboard.lua re-registers Omarchy's Alt bindings on ⌥
 -- before pages.lua and windows.lua replace some of them, setups.lua can give a
--- keyboard another keymap through what keyboard.lua shares, and windows.lua
--- uses what pages.lua shares.
+-- keyboard another keymap through what keyboard.lua shares, keys.lua binds
+-- each keyboard's keys once the keymaps are settled, and windows.lua uses
+-- what pages.lua shares.
 -- A module that fails doesn't take the others down. Its error goes to
 -- ~/.local/state/bento/errors, where bin/bento-apply looks after a reload.
 local errors = {}
-for _, module in ipairs({ "keyboard", "setups", "trackpad", "pages", "windows" }) do
+for _, module in ipairs({ "keyboard", "setups", "keys", "trackpad", "pages", "windows" }) do
   local ok, err = pcall(function() dofile(repo .. "/hypr/" .. module .. ".lua")(lib, S) end)
   if not ok then errors[#errors + 1] = module .. ": " .. tostring(err) end
 end

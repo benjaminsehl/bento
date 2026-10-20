@@ -107,11 +107,18 @@ and ⌥ types special characters. On top of that:
 - Terminal keys that stay terminal keys: ⌃C, ⌃D and ⌃R reach the shell.
 - Ghostty keys for copy, paste (images included), tabs and splits.
 
+That's for Mac keyboards. Each keyboard has a style in the Keyboard pane:
+Mac, Mac on PC keys (the same keys on a Ctrl/Win/Alt row), or PC. A PC
+keyboard, like a laptop's, keeps Omarchy's own keys and gets Bento's extras
+on Super: Super+←/→ for pages, Super+↑ for Overview, Super+↓ for the drawer
+and Super+M to minimize. In Ghostty, Ctrl+C interrupts and Ctrl+Shift+C
+copies, as on Linux.
+
 Every key, what it replaced and why is in [`docs/keymap.md`](docs/keymap.md).
 
 ## Setups
 
-A setup is a desk: how the displays are arranged there, and which keymap each
+A setup is a desk: how the displays are arranged there, and which style each
 keyboard gets. Arrange your displays the way you like them, then save the desk
 in the Bento app's Setups pane, or with `bento setup save Work`. From then on,
 plugging in brings it back.
@@ -130,7 +137,7 @@ plugging in brings it back.
   until a display or dock changes, or you choose Automatic; save it as a
   setup to keep it. From a terminal,
   `bento setup arrange internal=2560,540 "LG UltraFine"=0,0` does the same.
-- A setup can give a keyboard another keymap, like PC at work. Each keyboard
+- A setup can give a keyboard another style, like PC at work. Each keyboard
   has its own in the Keyboard pane.
 - Tiled 5K displays such as the LG UltraFine run on one stream, scaled to
   the whole panel, so a dock that can't carry two streams doesn't leave them
@@ -223,7 +230,7 @@ without fn.
 | `~/.local/bin/bento`, `bento-apply`, `mac-keybindings` | Links into `bin/` |
 | `~/.local/share/applications/bento.desktop` | The Bento app, in the launcher |
 | `~/.config/bento/settings.json` | Your settings |
-| `~/.config/bento/setups.json`, `keyboards.json` | Your setups and keymaps, once you save one; the app keeps the version before as `.prev`, and a setups change that failed as `setups.json.rejected` |
+| `~/.config/bento/setups.json`, `keyboards.json` | Your setups and keyboard styles, once you save one; the app keeps the version before as `.prev`, and a setups change that failed as `setups.json.rejected` |
 | `~/.config/ghostty/config` | One `config-file` line for Bento's Ghostty keys (if on) |
 | `~/.config/omarchy/shell.json` | Only to take Bento out, the way Omarchy's disable does, when the plugin folder went away without one |
 | `$XDG_RUNTIME_DIR/bento.lock`, `bento-setup.lock`, `bento-spotify-starting` | Empty lock files, and a marker while F8 starts Spotify. The cleanup removes `bento-setup.lock`; the folder is emptied at logout |
@@ -250,7 +257,7 @@ and workspace numbers are back. If Omarchy is holding Hyprland reloads for an
 update, the hook stays until the reload that ends the hold, and does only
 that. If Bento kept a tiled display on one stream, a notification gives the
 `~/.config/hypr/monitors.lua` lines that keep it that way (Bento never writes
-there itself). Your settings, setups and keymaps stay in `~/.config/bento`.
+there itself). Your settings, setups and keyboard styles stay in `~/.config/bento`.
 
 The uninstaller does the same by hand, for when the shell isn't running or
 you'd rather watch it happen. `--purge` deletes `~/.config/bento` too:
@@ -268,7 +275,7 @@ remove`: the shell keeps the older Bento's Service until it restarts.
 
 - [`docs/keymap.md`](docs/keymap.md): every key and gesture, and why.
 - [`docs/pages.md`](docs/pages.md): pages, Overview and the drawer in detail.
-- [`docs/setups.md`](docs/setups.md): setups, per-desk display layouts and keymaps, and tiled displays.
+- [`docs/setups.md`](docs/setups.md): setups, per-desk display layouts and keyboard styles, and tiled displays.
 - [`defaults.json`](defaults.json) and [`prefs/Schema.js`](prefs/Schema.js): every setting.
 - [`docs/screenshots.sh`](docs/screenshots.sh): retakes the screenshots in this README.
 

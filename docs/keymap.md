@@ -3,7 +3,11 @@
 Status: **live** on the author's machine (installed from a local checkout), and
 changing as it gets used. ❓ marks open questions. Results of the hands-on tests are in `spikes/results-round1.log`.
 
-Keys are written as you press them, by their Mac name, on either keyboard.
+Keys are written as you press them, by their Mac name. This is the map for
+**Mac keyboards**: the Magic Keyboard, the K3 Pro in Mac mode, and any keyboard
+set to *Mac on PC keys*. PC keyboards, the Dell's built-in one by default,
+keep the keys printed on them; see [PC keyboards](#pc-keyboards) and
+[docs/keyboards.md](keyboards.md).
 
 ## The idea
 
@@ -31,7 +35,8 @@ the handful of Mac keys apps don't already understand, and protects terminals.
 
 ## Physical layout (system script, opt-in)
 
-Both keyboards end up with Mac modifiers in Mac positions:
+With the Dell on *Mac on PC keys*, both keyboards end up with Mac modifiers in
+Mac positions:
 
 ```
 [⌃] [fn] [⌥] [⌘]  ─── Space ───  [⌘] [⌥]
@@ -277,9 +282,31 @@ row sends these codes (codes from the test):
 The system script swaps the two layers: the codes come without fn, and Bento's
 F-key bindings need fn. On the Magic Keyboard it gains nothing.
 
-F9 stops being Omarchy's push-to-talk (Caps Lock takes over), so on the Dell
-keyboard VS Code's breakpoint key is free. On the Magic Keyboard F9 is
+On Mac keyboards F9 stops being Omarchy's push-to-talk (Caps Lock takes
+over), so VS Code's breakpoint key is free. PC keyboards keep Omarchy's F9. On the Magic Keyboard F9 is
 Spotify's next track; switching off Top row without fn gives it back.
+
+## PC keyboards
+
+A PC keyboard keeps Omarchy's layout and Omarchy's keys: Super runs the
+desktop, Ctrl talks to the app, Alt is Alt. Bento only adds what Omarchy
+doesn't have, on Super:
+
+| Keys | Does | Omarchy had |
+|---|---|---|
+| Super+← / Super+→ | Previous / next page on this monitor | focus window → Super+Alt+← → |
+| Super+↑ | Overview | focus window up → Super+Alt+↑ |
+| Super+↓ | Minimized-windows drawer | focus window down → Super+Alt+↓ |
+| Super+Alt+arrows | Focus window in that direction | move window into a group (dropped, as on Mac) |
+| Super+M | Minimize the window | — |
+| Super+1 … Super+0 | The Nth page dot; Super+Shift moves the window there, Super+Shift+Alt without following | workspace N |
+| Super+Ctrl+, | The Bento app | — |
+
+None of the Mac keys (⌘W's tab logic, ⌘Q, ⌘Tab, the caret keys, ⌃ letters
+as line editing) apply. In Ghostty a PC keyboard works the Linux way: Ctrl +
+letter sends the control character (Ctrl+C interrupts), and Ctrl+Shift+C,
+V, T, W, N and F copy, paste, open a tab, close, open a window and find.
+Ctrl+← → move by word and Ctrl+⌫ deletes a word.
 
 ## Trackpad gestures
 

@@ -86,6 +86,78 @@ function lib.fingers(setting)
   return out
 end
 
+-- ------------------------------------------------------- keyboard styles
+-- Keyboards on Bento's keymaps (apple, pc) send ⌘ as CTRL, ⌃ as SUPER and
+-- ⌥ as MOD5, and get Mac bindings. Every other keyboard is PC: its keys are
+-- what's printed on them, with Omarchy's bindings. keys.lua fills these in
+-- once setups.lua has chosen each keyboard's keymap:
+--   lib.mac  device filter for Mac keyboards, nil when there are none
+--   lib.pc   device filter for every other keyboard, nil meaning all
+-- Hyprland reads an empty device list as every keyboard, so lib.mac stays
+-- nil rather than empty.
+lib.mac, lib.pc = nil, nil
+
+-- Omarchy's own bindings, by key (keyboard.lua records them), and the keys
+-- your ~/.config/hypr binds or unbinds itself.
+lib.omarchy_binds, lib.your_keys = {}, {}
+
+-- "SUPER + SHIFT + code:12" and "shift+super+CODE:12" are the same key.
+function lib.key_id(keys)
+  local parts = {}
+  for part in tostring(keys):gmatch("[^+]+") do
+    part = part:gsub("^%s+", ""):gsub("%s+$", ""):upper()
+    if part ~= "" then parts[#parts + 1] = part end
+  end
+  local key = table.remove(parts)
+  table.sort(parts)
+  parts[#parts + 1] = key
+  return table.concat(parts, "+")
+end
+
+local function copy(t)
+  local out = {}
+  for k, v in pairs(t or {}) do out[k] = v end
+  return out
+end
+
+-- Runs fn with every binding it makes limited to Mac keyboards. Omarchy's
+-- bindings for the keys it unbinds come back on PC keyboards, unless your
+-- ~/.config/hypr binds that key itself. Without Mac keyboards fn doesn't run.
+function lib.on_mac(fn)
+  if not lib.mac then return end
+  local real_bind, real_unbind = hl.bind, hl.unbind
+  local unbound, order = {}, {}
+  hl.bind = function(keys, dispatcher, opts)
+    opts = copy(opts)
+    if opts.device == nil then opts.device = lib.mac end
+    return real_bind(keys, dispatcher, opts)
+  end
+  hl.unbind = function(keys)
+    local id = lib.key_id(keys)
+    if not unbound[id] then unbound[id] = true; order[#order + 1] = id end
+    return real_unbind(keys)
+  end
+  local ok, err = pcall(fn)
+  hl.bind, hl.unbind = real_bind, real_unbind
+  for _, id in ipairs(order) do
+    if not lib.your_keys[id] then
+      for _, b in ipairs(lib.omarchy_binds[id] or {}) do
+        local opts = copy(b.opts)
+        opts.device = lib.pc
+        real_bind(b.keys, b.dispatcher, opts)
+      end
+    end
+  end
+  if not ok then error(err, 0) end
+end
+
+-- A binding for PC keyboards only.
+function lib.on_pc(keys, description, dispatcher, options)
+  local opts = copy(options)
+  opts.device = lib.pc
+  o.bind(keys, description, dispatcher, opts)
+end
+
 -- ---------------------------------------------------------- the shell
 -- Bento's shell side (Overlay.qml) moves the drawer, the scratchpad and
 -- Overview with your fingers. It sends a heartbeat every 10 seconds; while

@@ -207,6 +207,12 @@ local function display_of(d, warn)
   return e
 end
 
+-- A setup's keyboards map gives each keyboard a style (keyboard.lua). Files
+-- saved before styles have no "keyboardValues" and the older keymap values,
+-- read as before; nothing here rewrites them, the next save does.
+local styles = { mac = "mac", ["mac-on-pc"] = "mac-on-pc", pc = "pc" }
+local from_keymap = { apple = "mac", pc = "mac-on-pc", omarchy = "pc" }
+
 -- Checks every field. A bad setup or display is skipped, with a sentence in
 -- problems; the rest still works.
 local function validate(doc, problems)
@@ -287,11 +293,13 @@ local function validate(doc, problems)
           for id in pairs(s.keyboards) do ids[#ids + 1] = tostring(id) end
           table.sort(ids)
           for _, id in ipairs(ids) do
-            local keymap = s.keyboards[id]
-            if keymap == "apple" or keymap == "pc" or keymap == "omarchy" then
-              keyboards[#keyboards + 1] = { id = id, keymap = keymap }
+            local value = s.keyboards[id]
+            local style = (doc.keyboardValues == "style" and styles or from_keymap)[value]
+            if style then
+              keyboards[#keyboards + 1] = { id = id, style = style }
             else
-              problem(name .. ": keyboard " .. id .. " asks for " .. tostring(keymap) .. "; keymaps are apple, pc and omarchy")
+              problem(name .. ": keyboard " .. id .. " asks for " .. tostring(value) .. "; "
+                .. (doc.keyboardValues == "style" and "styles are mac, mac-on-pc and pc" or "keymaps are apple, pc and omarchy"))
             end
           end
         end
@@ -1294,12 +1302,12 @@ return function(lib, S)
   end
   if primary then pcall(hl.config, { cursor = { default_monitor = primary } }) end
 
-  -- Keyboards: a setup can give a keyboard another keymap while it's on.
+  -- Keyboards: a setup can give a keyboard another style while it's on.
   try("keyboards", function()
     if lib.keyboards and active then
       for _, k in ipairs(active.keyboards) do
-        if not lib.keyboards.override(k.id, k.keymap) then
-          problems[#problems + 1] = active.name .. ": keyboard " .. k.id .. " can't switch to " .. k.keymap
+        if not lib.keyboards.override(k.id, k.style) then
+          problems[#problems + 1] = active.name .. ": keyboard " .. k.id .. " can't switch to " .. k.style
         end
       end
     end
@@ -1307,7 +1315,7 @@ return function(lib, S)
     for _, k in ipairs(lib.keyboards and lib.keyboards.list or {}) do
       local devices = json.array()
       for _, n in ipairs(k.devices) do devices[#devices + 1] = n end
-      list[#list + 1] = { id = k.id, label = k.label, keymap = k.keymap, own = k.own, override = k.override or json.null,
+      list[#list + 1] = { id = k.id, label = k.label, style = k.style, own = k.own, override = k.override or json.null,
         connected = k.connected, devices = devices }
     end
     state.keyboards = list

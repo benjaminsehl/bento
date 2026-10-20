@@ -384,16 +384,18 @@ return function(lib, S)
     end
   end
 
-  -- With Mac modifiers nothing sends Alt: keyboard.lua moved Omarchy's Alt
-  -- bindings to ⌥ (MOD5), so replace those too.
-  local alt = S.keyboard.macModifiers and "MOD5" or "ALT"
-  local command = S.keyboard.macModifiers and P.numberKey == "⌘"
+  -- Mac keyboards send ⌥ as MOD5, where keyboard.lua moved Omarchy's Alt
+  -- bindings, and PC keyboards send Alt, so both get replaced. ⌘1 … ⌘0 are
+  -- for Mac keyboards only.
+  local alts = S.keyboard.macModifiers and { "MOD5", "ALT" } or { "ALT" }
+  local command = P.numberKey == "⌘"
   for n = 1, 10 do
     local key = "code:" .. tostring(n + 9) -- 1..9, 0 by key code so Shift doesn't change them
     lib.rebind("SUPER + " .. key, "Switch to page " .. n, go(n))
-    if command then lib.rebind("CTRL + " .. key, "Switch to page " .. n, go(n)) end
+    if command then lib.on_mac(function() lib.rebind("CTRL + " .. key, "Switch to page " .. n, go(n)) end) end
     lib.rebind("SUPER + SHIFT + " .. key, "Move window to page " .. n, move(n, true))
-    lib.rebind("SUPER + SHIFT + " .. alt .. " + " .. key, "Move window silently to page " .. n, move(n, false))
-    if alt ~= "ALT" then hl.unbind("SUPER + SHIFT + ALT + " .. key) end
+    for _, alt in ipairs(alts) do
+      lib.rebind("SUPER + SHIFT + " .. alt .. " + " .. key, "Move window silently to page " .. n, move(n, false))
+    end
   end
 end

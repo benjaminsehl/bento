@@ -5,14 +5,18 @@
 // file; SetupsStore.qml does that.
 //
 //   ~/.config/bento/setups.json        your setups (the app edits it)
-//   ~/.config/bento/keyboards.json     your keyboards' own keymaps
+//   ~/.config/bento/keyboards.json     your keyboards' own styles
 //   keyboards.json in the checkout     the built-in keyboards
 //   ~/.local/state/bento/setup.json    what Hyprland found and chose
 //
 // Edits work on copies and keep every field they don't know about.
 
-var keymaps = ["apple", "pc", "omarchy"]
-var keymapNames = { apple: "Apple", pc: "PC", omarchy: "Omarchy" }
+// A keyboard's style (hypr/keyboard.lua): Mac keys, Mac keys on a PC
+// keyboard's layout, or a PC keyboard with Omarchy's own keys.
+var styles = ["mac", "mac-on-pc", "pc"]
+var styleNames = { mac: "Mac", "mac-on-pc": "Mac on PC keys", pc: "PC" }
+// What the older `keymap` values are now.
+var fromKeymap = { apple: "mac", pc: "mac-on-pc", omarchy: "pc" }
 
 // The "looks like" scales on offer, relative to the panel's native size.
 var scales = [1, 1.25, 1.5, 1.75, 2, 2.5, 3]
@@ -803,7 +807,31 @@ function sameWhenAs(file, id) {
 
 // ---------------------------------------------------------------- keyboards
 
-function validKeymap(k) { return keymaps.indexOf(k) !== -1 }
+function validStyle(k) { return styles.indexOf(k) !== -1 }
+
+// A keyboards.json entry's style, from `style` or the older `keymap`.
+function styleOf(entry) {
+  if (!isObject(entry)) return ""
+  if (validStyle(entry.style)) return entry.style
+  return fromKeymap[entry.keymap] || ""
+}
+
+// setups.json with its keyboards' values as styles. A setups.json the app
+// hasn't saved since has the older keymap values (apple, pc, omarchy) and no
+// "keyboardValues"; the copy the app works on is converted, so its first save
+// writes styles and says so.
+function withStyles(file) {
+  if (!isObject(file) || file.keyboardValues === "style") return file
+  var next = clone(file)
+  list(next.setups).forEach(function(s) {
+    if (!isObject(s) || !isObject(s.keyboards)) return
+    Object.keys(s.keyboards).forEach(function(id) {
+      if (fromKeymap[s.keyboards[id]]) s.keyboards[id] = fromKeymap[s.keyboards[id]]
+    })
+  })
+  next.keyboardValues = "style"
+  return next
+}
 
 // One row per known keyboard: the built-in ones, yours, and any the state
 // lists. `own` comes from the files, so a change shows before Hyprland reloads;
@@ -820,37 +848,39 @@ function keyboardRows(repo, user, stateKeyboards, activeName) {
   Object.keys(repo).concat(Object.keys(user)).forEach(function(id) { if (ids.indexOf(id) === -1 && (isObject(repo[id]) || isObject(user[id]))) ids.push(id) })
   return ids.map(function(id) {
     var r = isObject(repo[id]) ? repo[id] : {}, u = isObject(user[id]) ? user[id] : {}, s = fromState[id]
-    var own = validKeymap(u.keymap) ? u.keymap : validKeymap(r.keymap) ? r.keymap : (s && validKeymap(s.own) ? s.own : "")
-    var override = s && validKeymap(s.override) ? s.override : ""
+    var own = styleOf(u) || styleOf(r) || (s && validStyle(s.own) ? s.own : "")
+    var override = s && validStyle(s.override) ? s.override : ""
     return {
       id: id,
       label: String(u.label || r.label || (s && s.label) || id),
       own: own,
       connected: s ? s.connected === true : null,
       override: override,
-      note: override && activeName ? keymapNames[override] + " in " + activeName : ""
+      note: override && activeName ? styleNames[override] + " in " + activeName : ""
     }
   })
 }
 
-// Your keyboards.json after choosing `keymap` for one keyboard. Only what
-// differs from the built-in file is kept, so new built-ins reach you.
-function keyboardsWithKeymap(repo, user, id, keymap) {
+// Your keyboards.json after choosing `style` for one keyboard. Only what
+// differs from the built-in file is kept, so new built-ins reach you. An
+// older `keymap` there goes: `style` says it now.
+function keyboardsWithStyle(repo, user, id, style) {
   var next = isObject(user) ? clone(user) : {}
   var mine = isObject(next[id]) ? next[id] : {}
   var builtIn = isObject(repo) && isObject(repo[id]) ? repo[id] : null
-  if (builtIn && builtIn.keymap === keymap) delete mine.keymap
-  else mine.keymap = keymap
+  delete mine.keymap
+  if (builtIn && styleOf(builtIn) === style) delete mine.style
+  else mine.style = style
   if (Object.keys(mine).length === 0) delete next[id]
   else next[id] = mine
   return next
 }
 
-// A setup's keymap for one keyboard: "own" removes the override.
-function setKeyboardOverride(setup, id, keymap) {
+// A setup's style for one keyboard: "own" removes the override.
+function setKeyboardOverride(setup, id, style) {
   var next = clone(setup)
   var kb = isObject(next.keyboards) ? next.keyboards : {}
-  if (validKeymap(keymap)) kb[id] = keymap
+  if (validStyle(style)) kb[id] = style
   else delete kb[id]
   if (Object.keys(kb).length === 0) delete next.keyboards
   else next.keyboards = kb

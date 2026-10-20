@@ -57,16 +57,17 @@ return function(lib, S)
   end
 
   -- ------------------------------------------------------------- keys
-  -- With Bento's keys: ⌘M minimizes, ⌃↑, Mission Control and the Magic
-  -- Keyboard's F3 open Overview, ⌃↓ the drawer. Without them, SUPER + M
-  -- minimizes.
+  -- ⌃↑ on a Mac keyboard, Super+↑ on a PC one, opens Overview, and ↓ the
+  -- drawer. ⌘M minimizes on a Mac keyboard, Super+M on a PC one. Mission
+  -- Control and the Magic Keyboard's F3 open Overview too.
   if W.minimize then
-    lib.rebind(mac and "CTRL + M" or "SUPER + M", "Minimize window", minimize)
-    if mac then lib.rebind("SUPER + DOWN", "Minimized windows", toggle_drawer) end
+    lib.on_mac(function() lib.rebind("CTRL + M", "Minimize window", minimize) end)
+    lib.rebind("SUPER + M", "Minimize window", minimize, { device = lib.pc })
+    lib.rebind("SUPER + DOWN", "Minimized windows", toggle_drawer)
   end
-  if W.overview and mac then
+  if W.overview then
     lib.rebind("SUPER + UP", "Overview", toggle_overview)
-    if S.keyboard.topRow then lib.rebind("XF86LaunchA", "Overview", toggle_overview) end
+    if mac and S.keyboard.topRow then lib.rebind("XF86LaunchA", "Overview", toggle_overview) end
     if lib.magic_keyboard then o.bind("F3", "Overview", toggle_overview, { device = lib.magic_keyboard }) end
   end
 

@@ -4,7 +4,7 @@ import qs.Ui
 import "SetupsData.js" as Data
 
 // The Setups pane. A setup remembers a desk: its displays, how they're
-// arranged and scaled, and each keyboard's keymap. Bento uses the one whose
+// arranged and scaled, and each keyboard's style. Bento uses the one whose
 // devices are connected, or the one you hold by hand. The radio on the left
 // of each setup uses it; clicking the setup itself shows it below to edit.
 // Edits to the setup in use apply right away (and roll back if Hyprland's
@@ -785,7 +785,7 @@ Column {
         visible: !root.macModifiers || root.store === null || root.store.keyboards.length === 0
         wrapMode: Text.WordWrap
         text: !root.macModifiers
-          ? "Keymaps are part of the Bento modifier layout, so there's nothing to choose while it's off."
+          ? "The Bento modifier layout is off, so every keyboard is PC and there's nothing to choose."
           : "Bento doesn't know any keyboards yet."
         color: root.dim
         font.family: Style.font.family
@@ -797,15 +797,15 @@ Column {
         Item {
           id: keyboard
           required property var modelData
-          readonly property string keymap: root.selected && Data.isObject(root.selected.keyboards) && Data.validKeymap(root.selected.keyboards[modelData.id])
+          readonly property string style: root.selected && Data.isObject(root.selected.keyboards) && Data.validStyle(root.selected.keyboards[modelData.id])
             ? root.selected.keyboards[modelData.id] : "own"
 
           width: root.width
-          height: Math.max(keymapChoice.height, kbLabel.implicitHeight) + Style.spacing.panelPadding
+          height: Math.max(styleChoice.height, kbLabel.implicitHeight) + Style.spacing.panelPadding
 
           Column {
             id: kbLabel
-            anchors { left: parent.left; right: keymapChoice.left; rightMargin: Style.spacing.lg; verticalCenter: parent.verticalCenter }
+            anchors { left: parent.left; right: styleChoice.left; rightMargin: Style.spacing.lg; verticalCenter: parent.verticalCenter }
             spacing: 3
             Text {
               width: parent.width
@@ -818,7 +818,7 @@ Column {
             Text {
               width: parent.width
               visible: keyboard.modelData.own !== ""
-              text: "Its own: " + (Data.keymapNames[keyboard.modelData.own] || "")
+              text: "Its own: " + (Data.styleNames[keyboard.modelData.own] || "")
               color: root.dim
               font.family: Style.font.family
               font.pixelSize: Style.font.bodySmall
@@ -826,14 +826,14 @@ Column {
           }
 
           ButtonGroup {
-            id: keymapChoice
+            id: styleChoice
             anchors { right: parent.right; verticalCenter: parent.verticalCenter }
-            options: [{ value: "own", label: "Its own" }].concat(Data.keymaps.map(function(k) { return { value: k, label: Data.keymapNames[k] } }))
-            value: keyboard.keymap
+            options: [{ value: "own", label: "Its own" }].concat(Data.styles.map(function(k) { return { value: k, label: Data.styleNames[k] } }))
+            value: keyboard.style
             enabled: root.editable
             onChanged: function(v) {
               var id = keyboard.modelData.id
-              if (v !== keyboard.keymap) root.edit(function(s) { return Data.setKeyboardOverride(s, id, v) })
+              if (v !== keyboard.style) root.edit(function(s) { return Data.setKeyboardOverride(s, id, v) })
             }
           }
         }

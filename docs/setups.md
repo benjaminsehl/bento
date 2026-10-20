@@ -7,7 +7,7 @@ the plan. See [Stages](#stages).
 
 A setup is a named desk: home, work, the other room at work. Bento picks one
 from what is plugged in, or you pick one by hand. A setup arranges the
-displays and gives each keyboard its keymap. From stage 2 it also chooses the
+displays and gives each keyboard its style. From stage 2 it also chooses the
 default speakers and microphone, and from stage 3 it tells you which camera
 each call app will open. With no setup in use, you can drag the displays into
 place in the Setups pane; that holds until a display or dock changes, unless
@@ -205,7 +205,7 @@ they connect, and the second pass when Bento takes over two lit tiles.
 |---|---|---|
 | `hypr/setups.lua` | Reads what's plugged in (display EDIDs, Thunderbolt units, USB devices) from sysfs. Chooses the setup and emits its monitor rules and keyboard overrides at every load, or with no setup, places the displays where they were dragged. Guards tiled displays whether or not a setup is active. After a hotplug, waits for things to settle and reloads if something relevant changed. Checks the result and falls back when it's wrong. Owns the state file. | Display behaviour lives in Hyprland (principle 7), and every load has to rebuild the layout anyway. A load takes about 3 to 6 ms, the scan included. |
 | `hypr/edid.lua`, `hypr/sysfs.lua`, `hypr/json.lua` | EDID keys and tile blocks, the sysfs scan (DRM connectors, Thunderbolt, USB), and JSON for the Lua side. | Plain Lua with no dependencies, tested on their own. |
-| `hypr/keyboard.lua` | Each keyboard's own keymap, from the repo's `keyboards.json` and yours. | It stays independent of setups, so a broken `setups.json` can't take out your keymaps. |
+| `hypr/keyboard.lua` | Each keyboard's own style, from the repo's `keyboards.json` and yours. | It stays independent of setups, so a broken `setups.json` can't take out your keyboards. |
 | `bin/bento-setup` (bash) | `bento setup …`, "Save current as setup", the pane's apply, and its drags with no setup in use (`arrange`). It talks to `setups.lua` through files: a choice goes in `setup-request.json`, then a `hyprctl reload`, and the answer is in the state file. From stage 2 it also sets audio. | Works without the shell and is easy to try from a terminal. PipeWire calls would block the compositor, so they can't run in Lua. |
 | `Service.qml` (shell) | Runs `install.sh` when the shell starts Bento, and starts `bin/bento-cleanup` when the shell lets go of it. Stage 2: tells `bento-setup` when PipeWire devices come and go. | Long-running watchers need a host, and the shell already exists and goes away with Bento. |
 | `prefs/Setups.qml`, `prefs/Keyboards.qml`, `pages/SetupsMenu.qml` | The Setups pane, the Keyboard pane's Keyboards group, and the bar menu. `prefs/SetupsStore.qml` reads and writes the files; `prefs/SetupsData.js` holds the logic, snapping included; `prefs/Identify.qml` outlines the screen of the display selected in the pane. | Interface lives in the shell. |
@@ -221,7 +221,7 @@ it counts the next time displays change.
   `settings.json`. A change that failed its check is kept as
   `setups.json.rejected`. A file you edit by hand is never rolled back (see
   [Checking and falling back](#checking-and-falling-back)).
-- `~/.config/bento/keyboards.json`: your keyboards' own keymaps, only where
+- `~/.config/bento/keyboards.json`: your keyboards' own styles, only where
   they differ from the repo's.
 - `keyboards.json` in the repo: built-in models (the Magic Keyboard, the K3
   Pro, the laptop's AT keyboard), so they work for everyone.
@@ -316,9 +316,13 @@ This is what `bento setup save` writes at each desk, with Omarchy's scale at
   and USB devices (`usb`, vendor:product), each with a `label`. A setup with
   an empty `when` is the fallback. Bento reads no USB serials, because those
   can wait on the device.
-- **`keyboards`** inside a setup overrides a keyboard's own keymap while that
-  setup is active. Here the K3 Pro switches to PC at work. Keymaps are
-  `apple`, `pc` or `omarchy` (Omarchy's layout, no Bento keymap).
+- **`keyboards`** inside a setup overrides a keyboard's own style while that
+  setup is active. Here the K3 Pro switches to PC at work. Styles are `mac`,
+  `mac-on-pc` or `pc` ([docs/keyboards.md](keyboards.md)). A file saved
+  before styles has no top-level `"keyboardValues": "style"`, and its values
+  are the older keymaps, read as before: `apple`, `pc` (Mac on PC keys) and
+  `omarchy` (PC). The first save from the pane or `bento setup` rewrites
+  them as styles and adds the marker.
 - **Audio and camera** (stages 2 and 3) will be stored as identities (USB
   ids, serial, profile), never as node names or ids. Stage 1 ignores fields
   it doesn't know.
@@ -336,19 +340,20 @@ vendor:product, or by any name with its vendor:product pairs in `ids`.
 
 ```json
 {
-  "3434:0233": { "label": "Keychron K3 Pro", "keymap": "apple",
+  "3434:0233": { "label": "Keychron K3 Pro", "style": "mac",
                  "devices": ["keychron-keychron-k3-pro", "keychron-keychron-k3-pro-keyboard"] },
-  "apple-magic-keyboard": { "label": "Apple Magic Keyboard", "keymap": "apple",
+  "apple-magic-keyboard": { "label": "Apple Magic Keyboard", "style": "mac",
                             "ids": ["05ac:029a", "004c:029a"],
                             "devices": ["apple-inc.-magic-keyboard-with-touch-id"] },
-  "laptop": { "label": "Laptop keyboard", "keymap": "pc",
+  "laptop": { "label": "Laptop keyboard", "style": "pc",
               "devices": ["at-translated-set-2-keyboard"] }
 }
 ```
 
-Yours is laid over the repo's field by field, so `{ "3434:0233": { "keymap":
-"pc" } }` is all it takes to change one keymap. The Keyboard pane writes only
-the differences.
+Yours is laid over the repo's field by field, so `{ "3434:0233": { "style":
+"pc" } }` is all it takes to change one style. The older `"keymap"` field
+still works (`apple`, `pc`, `omarchy` are `mac`, `mac-on-pc`, `pc`). The
+Keyboard pane writes only the differences, as `style`.
 
 #### The state file
 
@@ -398,7 +403,7 @@ built, it holds:
   failed; then it also has `arranged: true`.
 - `guard_notice`: the last such difference already told, so it's said once.
 - `request_load`: the load that took the last `setup-request.json`.
-- `keyboards`: each known keyboard, its own keymap, the setup's `override`,
+- `keyboards`: each known keyboard, its `style` and its `own`, the setup's `override`,
   whether it's `connected`, and its device names.
 - `descriptions`: Hyprland's description for each display key seen, so the
   guard's `desc:` rule can go out at login, before Hyprland lists anything.
@@ -528,7 +533,7 @@ places a setup's.
   twice", "has a position that isn't two whole numbers", "has no position
   (at)", "doesn't say which display it is", "has a scale that isn't a number
   from 0 to 10" or "has a transform that isn't 0 to 7".
-- **What sets it apart from a setup.** It has no name, primary, keymaps or
+- **What sets it apart from a setup.** It has no name, primary, keyboard styles or
   `when`, it lives only in the state file, and nothing marks it failed. Each
   display in it is what `bento setup save` would write for it (its label,
   sizes, scale when that isn't Omarchy's, rotation, and a plain external
@@ -807,15 +812,16 @@ that matches, or Omarchy's placement, never the arrangement.
   names of every known vendor:product, written the way Hyprland writes them
   (`-1`, `-2` for repeats). Stored names cover keyboards plugged in later.
   The Magic Keyboard's top-row bindings go to the same names.
-- `apple` and `pc` are emitted only when `install.sh` compiled them;
-  `omarchy` is emitted as `kb_file = ""`. Keymaps are part of Bento's
-  modifier layout, so with Mac modifiers off none of this runs.
+- `mac` and `mac-on-pc` are emitted only when `install.sh` compiled their
+  keymaps (`apple`, `pc`); `pc` is emitted as `kb_file = ""`. Keymaps are
+  part of Bento's modifier layout, so with Mac modifiers off none of this
+  runs.
 - `setups.lua` loads after `keyboard.lua` and emits the active setup's
   overrides. An override that can't be applied becomes a problem in the
   state file.
 - The Keyboard pane has a **Keyboards** group with one row per known
-  keyboard, connected or not, and a choice of Apple, PC or Omarchy. That's
-  the keyboard's own keymap, saved to your `keyboards.json`. A row says "Not
+  keyboard, connected or not, and a choice of Mac, Mac on PC keys or PC.
+  That's the keyboard's own style, saved to your `keyboards.json`. A row says "Not
   connected", and when the active setup overrides it, "PC in Work". A
   setup's override is chosen in the Setups pane.
 
@@ -891,8 +897,8 @@ that matches, or Omarchy's placement, never the arrangement.
 
  IDENTIFIED BY   [✓ LG UltraFine]  [CalDigit TS4]
                  Used when all of these are connected.
- KEYBOARDS       Keychron K3 Pro   [Its own | Apple | PC● | Omarchy]
-                 Its own: Apple
+ KEYBOARDS       Keychron K3 Pro   [Its own | Mac | Mac on PC keys | PC●]
+                 Its own: Mac
 
  Changes to the setup in use apply right away. Others are saved for next time.
 ```
@@ -1006,7 +1012,7 @@ With no setup in use, the pane shows the displays as they are now instead:
 - **Identified by** ticks devices in or out of `when`, with "Used when all of
   these are connected", or "Nothing ticked, so … is used when no other setup
   matches".
-- **Keyboards** lets this setup give a keyboard another keymap while it's
+- **Keyboards** lets this setup give a keyboard another style while it's
   on ("Its own" leaves it alone). With Mac modifiers off, there's nothing to
   choose.
 - **A setup that isn't in use** can be edited, dragged included, but only

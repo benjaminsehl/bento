@@ -399,10 +399,22 @@ pick() {
 # setups.json, atomically, keeping the old one as setups.json.prev for
 # rollback. With no old file there's nothing to go back to, so a stale .prev
 # goes too: rolling back then deletes setups.json.
+#
+# A file saved before keyboard styles has the older keymap values in its
+# setups' keyboards (apple, pc, omarchy) and no "keyboardValues"; the first
+# write turns them into styles (mac, mac-on-pc, pc) and says so, as the app
+# does (SetupsData.withStyles).
 write_setups() { # JSON text
+  local styled
+  styled=$(jq 'if .keyboardValues == "style" then . else
+      (if (.setups | type) == "array" then .setups |= map(
+         if type == "object" and (.keyboards | type) == "object"
+         then .keyboards |= map_values(if type == "string" then ({apple: "mac", pc: "mac-on-pc", omarchy: "pc"}[.] // .) else . end)
+         else . end) else . end)
+      | .keyboardValues = "style" end' <<<"$1") || die "couldn't write $config"
   mkdir -p "$(dirname "$config")"
   if [[ -f $config ]]; then cp "$config" "$config.prev"; else rm -f "$config.prev"; fi
-  printf '%s\n' "$1" > "$config.tmp.$$"
+  printf '%s\n' "$styled" > "$config.tmp.$$"
   mv "$config.tmp.$$" "$config"
 }
 
