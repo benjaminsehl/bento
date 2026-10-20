@@ -28,6 +28,9 @@ Item {
   Settings { id: settings }
   SetupsStore { id: setups; repo: settings.repo; watching: root.opened }
 
+  // Each pane opens at its top, not where the last one was scrolled to.
+  onPaneChanged: content.contentY = 0
+
   function open(payloadJson) {
     var payload = {}
     try { payload = JSON.parse(payloadJson || "{}") || {} } catch (e) {}
@@ -194,20 +197,24 @@ Item {
           }
         }
 
+        // Hidden when off: a Loader keeps the size of what it last held.
         Loader {
           active: root.pane === "keyboard"
+          visible: active
           width: column.width
           sourceComponent: keyboardsGroup
         }
 
         Loader {
           active: root.pane === "setups"
+          visible: active
           width: column.width
           sourceComponent: setupsPane
         }
 
         Loader {
           active: root.pane === "about"
+          visible: active
           width: column.width
           sourceComponent: aboutPane
         }

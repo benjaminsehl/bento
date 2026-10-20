@@ -704,7 +704,7 @@ reload.
  Setups
  ┌──────────────────────────────────────────────────────────────────┐
  │ (●) Automatic        now: Work                                   │
- │ ( ) Work             In use                             in use   │
+ │ ( ) Work             In use                                      │
  │ ( ) Home             Not connected: StudioDisplay                │
  │ ( ) Anywhere else    When no other setup matches                 │
  └──────────────────────────────────────────────────────────────────┘

@@ -135,7 +135,7 @@ Column {
         required property var modelData
         name: modelData.name
         note: modelData.note
-        tag: modelData.active ? "in use" : ""
+        strong: modelData.active
         chosen: modelData.chosen
         usable: modelData.usable
         current: modelData.id === root.selectedId
@@ -177,6 +177,7 @@ Column {
       height: Style.spacing.panelPadding * 2.6
 
       Text {
+        id: selectedName
         anchors { left: parent.left; right: actions.left; rightMargin: Style.spacing.lg; bottom: parent.bottom; bottomMargin: Style.spacing.md }
         text: root.selected ? String(root.selected.name || root.selected.id) : ""
         elide: Text.ElideRight
@@ -187,9 +188,12 @@ Column {
         font.letterSpacing: 0.6
       }
 
+      // The buttons' labels sit on the name's baseline.
+      FontMetrics { id: buttonFont; font.family: Style.font.family; font.pixelSize: Style.font.body }
+
       Row {
         id: actions
-        anchors { right: parent.right; bottom: parent.bottom }
+        anchors { right: parent.right; verticalCenter: selectedName.baseline; verticalCenterOffset: buttonFont.height / 2 - buttonFont.ascent }
         spacing: Style.spacing.md
         visible: !root.renaming && !root.confirmingDelete
         Button {
@@ -567,7 +571,8 @@ Column {
     id: choiceRow
     property string name: ""
     property string note: ""
-    property string tag: ""
+    // The setup in use: its note ("In use", "Chosen by hand") reads darker.
+    property bool strong: false
     property bool chosen: false
     property bool usable: true
     property bool current: false
@@ -633,19 +638,10 @@ Column {
     }
 
     Text {
-      anchors { left: rowName.right; leftMargin: Style.spacing.lg; right: rowTag.left; rightMargin: Style.spacing.lg; verticalCenter: parent.verticalCenter }
+      anchors { left: rowName.right; leftMargin: Style.spacing.lg; right: parent.right; rightMargin: Style.spacing.lg; verticalCenter: parent.verticalCenter }
       text: choiceRow.note
       elide: Text.ElideRight
-      color: choiceRow.usable ? root.dim : root.faint
-      font.family: Style.font.family
-      font.pixelSize: Style.font.bodySmall
-    }
-
-    Text {
-      id: rowTag
-      anchors { right: parent.right; rightMargin: Style.spacing.lg; verticalCenter: parent.verticalCenter }
-      text: choiceRow.tag
-      color: root.dim
+      color: !choiceRow.usable ? root.faint : (choiceRow.strong ? root.fg : root.dim)
       font.family: Style.font.family
       font.pixelSize: Style.font.bodySmall
     }
