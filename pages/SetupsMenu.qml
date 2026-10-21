@@ -26,6 +26,18 @@ Item {
   readonly property bool showError: store.scope === "setups" && !store.busy && store.failed && store.message !== ""
   property string switching: ""    // the id being switched to, while bento-setup runs
 
+  // Wide enough for every row's name and note, up to a cap.
+  FontMetrics { id: rowFont; font.family: root.fontFamily; font.pixelSize: Style.font.bodySmall }
+  function rowWidth(name, note) {
+    return Style.space(28) + Math.ceil(rowFont.advanceWidth(name))
+      + (note ? Style.space(8) + Math.ceil(rowFont.advanceWidth(note)) : 0) + Style.space(10)
+  }
+  readonly property real widestRow: {
+    var w = rowWidth("Automatic", Data.automaticNote(root.model))
+    root.model.items.forEach(function(it) { w = Math.max(w, rowWidth(it.name, Data.menuNote(it))) })
+    return w
+  }
+
   // Polled slowly too, so the right-click knows when there are two setups.
   // Every bar has its own store; bento-setup's lock keeps a switch from here
   // from mixing with one from another bar, the app or the command line.
@@ -68,7 +80,8 @@ Item {
     open: root.open
     padding: Style.space(8)
     borderColor: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.45)
-    contentWidth: card.fittedContentWidth(Style.space(232))
+    contentWidth: card.fittedContentWidth(Math.max(Style.space(232), root.widestRow + card.padding * 2
+      + Border.left(card.borderSpec) + Border.right(card.borderSpec)), Style.space(360))
     contentHeight: card.fittedContentHeight(rows.implicitHeight, Style.space(420))
 
     Column {
@@ -78,7 +91,7 @@ Item {
 
       MenuRow {
         text: "Automatic"
-        note: root.switching === "auto" ? "switching…" : (root.model.now ? "now: " + root.model.now : "")
+        note: root.switching === "auto" ? "switching…" : Data.automaticNote(root.model)
         checked: root.model.automatic
         onActivated: root.choose("auto", root.model.automatic)
       }
@@ -88,9 +101,10 @@ Item {
         MenuRow {
           required property var modelData
           text: modelData.name
-          note: root.switching === modelData.id ? "switching…" : !modelData.usable ? modelData.note : (modelData.active ? "in use" : "")
+          note: root.switching === modelData.id ? "switching…" : Data.menuNote(modelData)
           checked: modelData.chosen
           usable: modelData.usable
+          strong: modelData.active
           onActivated: root.choose(modelData.id, modelData.chosen)
         }
       }
@@ -135,11 +149,13 @@ Item {
     property string note: ""
     property bool checked: false
     property bool usable: true
+    // In use, so not greyed even when what it saved isn't all connected.
+    property bool strong: false
     signal activated()
 
     width: rows.width
     implicitHeight: Style.space(30)
-    opacity: usable ? 1 : 0.45
+    opacity: usable || strong ? 1 : 0.45
 
     Rectangle {
       anchors.fill: parent
@@ -160,7 +176,9 @@ Item {
     Text {
       id: rowText
       anchors { verticalCenter: parent.verticalCenter; left: parent.left; leftMargin: Style.space(28) }
-      width: Math.min(implicitWidth, parent.width - Style.space(38) - (rowNote.text ? Style.space(40) : 0))
+      // The note keeps up to about half the row; the name gets the rest.
+      width: Math.min(implicitWidth, parent.width - Style.space(28) - Style.space(10)
+        - (rowNote.text ? Style.space(8) + Math.min(Math.ceil(rowFont.advanceWidth(menuRow.note)), parent.width * 0.55) : 0))
       text: menuRow.text
       color: root.foreground
       elide: Text.ElideRight
@@ -173,7 +191,8 @@ Item {
       anchors { verticalCenter: parent.verticalCenter; left: rowText.right; leftMargin: Style.space(8); right: parent.right; rightMargin: Style.space(10) }
       horizontalAlignment: Text.AlignRight
       text: menuRow.note
-      color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.6)
+      // A greyed row is already faded; its reason isn't faded twice.
+      color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, menuRow.usable || menuRow.strong ? 0.6 : 1.0)
       elide: Text.ElideRight
       font.family: root.fontFamily
       font.pixelSize: Style.font.bodySmall

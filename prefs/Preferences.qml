@@ -29,17 +29,26 @@ Item {
   SetupsStore { id: setups; repo: settings.repo; watching: root.opened }
 
   // Each pane opens at its top, not where the last one was scrolled to.
-  onPaneChanged: content.contentY = 0
+  // Leaving a pane also takes the keyboard back from a field it had.
+  onPaneChanged: { content.bottomMargin = 0; content.contentY = 0; keys.forceActiveFocus() }
 
   function open(payloadJson) {
     var payload = {}
     try { payload = JSON.parse(payloadJson || "{}") || {} } catch (e) {}
-    if (payload.pane) root.pane = payload.pane
+    if (Schema.panes.some(function(p) { return p.id === payload.pane })) root.pane = payload.pane
+    // Opened after being closed: at the top, with nothing left half-typed.
+    // Asked for again while open, it keeps what's under way, field focus too.
+    var fresh = !root.opened
+    if (fresh) {
+      if (setupsLoader.item) setupsLoader.item.reset()
+      content.bottomMargin = 0
+      content.contentY = 0
+    }
     if (!setups.busy) setups.message = ""
     setups.refresh()
     root.opened = true
     window.visible = true
-    Qt.callLater(function() { keys.forceActiveFocus() })
+    if (fresh) Qt.callLater(function() { keys.forceActiveFocus() })
   }
 
   function close() {
@@ -52,6 +61,23 @@ Item {
   function dismiss() {
     root.opened = false
     window.visible = false
+  }
+
+  // Scrolls an item into view with room below it, for a dropdown's list,
+  // adding space past the end of the pane when the item is near the bottom.
+  function reveal(item, below) {
+    var bottom = item.mapToItem(content.contentItem, 0, 0).y + item.height + below + Style.spacing.md
+    var need = bottom - content.height
+    if (need <= content.contentY) return
+    content.bottomMargin = Math.max(0, need - (content.contentHeight - content.height))
+    content.contentY = need
+  }
+
+  // The list closed: take the extra space away again.
+  function unreveal() {
+    if (content.bottomMargin === 0) return
+    content.bottomMargin = 0
+    content.returnToBounds()
   }
 
   function enabled(row) {
@@ -206,6 +232,7 @@ Item {
         }
 
         Loader {
+          id: setupsLoader
           active: root.pane === "setups"
           visible: active
           width: column.width
@@ -225,10 +252,12 @@ Item {
     Rectangle {
       id: footer
       anchors { bottom: parent.bottom; left: sidebar.right; right: parent.right; leftMargin: 1 }
-      height: Style.spacing.controlHeight + Style.spacing.panelPadding
+      // Up to three lines, so a failure's reason isn't cut off.
+      height: Math.max(Style.spacing.controlHeight, footerText.implicitHeight) + Style.spacing.panelPadding
       color: "transparent"
       Rectangle { width: parent.width; height: 1; color: root.hairline }
       Text {
+        id: footerText
         anchors { verticalCenter: parent.verticalCenter; left: parent.left; right: parent.right; leftMargin: Style.spacing.panelPadding * 1.5; rightMargin: Style.spacing.panelPadding }
         text: settings.applying ? "Applying…"
             : settings.applyError ? "Not applied, so the previous setting is back: " + settings.applyError
@@ -236,6 +265,8 @@ Item {
             : root.pane === "setups" ? "Changes to the setup in use apply right away. Others are saved for next time."
             : "Changes apply right away."
         color: settings.applyError || (root.setupsSpeak && !setups.busy && setups.failed) ? Color.urgent : root.dim
+        wrapMode: Text.Wrap
+        maximumLineCount: 3
         elide: Text.ElideRight
         font.family: Style.font.family
         font.pixelSize: Style.font.bodySmall
@@ -373,7 +404,8 @@ Item {
     Setups {
       store: setups
       macModifiers: settings.get("keyboard", "macModifiers") === true
-      onDoneTyping: keys.forceActiveFocus()
+      onDoneTyping: { root.unreveal(); keys.forceActiveFocus() }
+      onReveal: function(item, below) { root.reveal(item, below) }
     }
   }
 
@@ -398,7 +430,8 @@ Item {
         font.family: Style.font.family
         font.pixelSize: Style.font.bodySmall
       }
-      Row {
+      Flow {
+        width: parent.width
         spacing: Style.spacing.lg
         Button {
           text: "Restore defaults"

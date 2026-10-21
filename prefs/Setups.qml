@@ -17,6 +17,10 @@ Column {
   property bool macModifiers: true
   // A text field or dropdown had the keyboard; the window wants it back.
   signal doneTyping()
+  // An open dropdown needs this much room under the item: scroll it into view.
+  signal reveal(Item item, real below)
+  // Every dropdown list closes (see reset).
+  signal closeLists()
 
   readonly property color fg: Color.foreground
   readonly property color dim: Qt.rgba(fg.r, fg.g, fg.b, 0.55)
@@ -54,6 +58,13 @@ Column {
   property bool confirmingDelete: false
 
   onSelectedIdChanged: { selectedDisplay = 0; renaming = false; confirmingDelete = false }
+
+  // The window opens fresh: the setup in use, nothing half-typed or half-deleted,
+  // and no dropdown list left open from before it closed.
+  function reset() {
+    pickedId = ""; selectedDisplay = 0; naming = false; renaming = false; confirmingDelete = false
+    closeLists()
+  }
 
   function edit(change, note) { if (root.editable) root.store.editSetup(root.selectedId, change, note) }
 
@@ -93,7 +104,7 @@ Column {
       required property var modelData
       width: root.width
       wrapMode: Text.WordWrap
-      text: "setups.json: " + String(modelData)
+      text: (/^setups\.json/.test(String(modelData)) ? "" : "setups.json: ") + String(modelData)
       color: Color.urgent
       font.family: Style.font.family
       font.pixelSize: Style.font.bodySmall
@@ -102,9 +113,10 @@ Column {
   }
 
   // ---------------------------------------------------------- empty state
+  // Not over a file that can't be read: that has setups, just none shown.
   Text {
     width: root.width
-    visible: root.all.length === 0
+    visible: root.all.length === 0 && root.store !== null && root.store.fileError === ""
     wrapMode: Text.WordWrap
     text: "No setups yet. Arrange your displays the way you like them at this desk, then save it, and Bento brings it back whenever you're here."
     color: root.fg
@@ -122,7 +134,7 @@ Column {
 
     ChoiceRow {
       name: "Automatic"
-      note: root.menu.now ? "now: " + root.menu.now : (root.hasState ? "nothing matches now" : "")
+      note: root.hasState ? Data.automaticNote(root.menu) : ""
       chosen: root.menu.automatic
       usable: root.hasState
       onUse: if (!root.menu.automatic) root.store.use("auto")
@@ -154,7 +166,7 @@ Column {
     bordered: true
     enabled: root.editable && root.hasState
     opacity: enabled ? 1 : 0.5
-    onClicked: { root.naming = true; nameField.text = ""; nameField.focusField() }
+    onClicked: { root.renaming = false; root.confirmingDelete = false; root.naming = true; nameField.text = ""; nameField.focusField() }
   }
 
   NameEditor {
@@ -205,12 +217,12 @@ Column {
         Button {
           text: "Rename"
           enabled: root.editable
-          onClicked: { root.renaming = true; renameField.text = root.selected.name || ""; renameField.focusField() }
+          onClicked: { root.naming = false; root.renaming = true; renameField.text = root.selected.name || ""; renameField.focusField() }
         }
         Button {
           text: "Delete"
           enabled: root.editable
-          onClicked: root.confirmingDelete = true
+          onClicked: { if (root.naming) { root.naming = false; root.doneTyping() } root.confirmingDelete = true }
         }
       }
     }
@@ -224,29 +236,40 @@ Column {
       onCancelled: { root.renaming = false; root.doneTyping() }
     }
 
-    Row {
+    Column {
       visible: root.confirmingDelete
-      spacing: Style.spacing.lg
+      width: parent.width
       bottomPadding: Style.spacing.lg
-      Text {
-        anchors.verticalCenter: parent.verticalCenter
-        text: root.selectedRow && root.selectedRow.active
-          ? "Delete " + root.selected.name + "? Bento then uses whichever setup matches."
-          : "Delete " + (root.selected ? root.selected.name : "") + "?"
-        color: root.fg
-        font.family: Style.font.family
-        font.pixelSize: Style.font.body
-      }
-      Button {
-        text: "Delete"
-        bordered: true
-        foreground: Color.urgent
-        enabled: root.editable
-        onClicked: { root.confirmingDelete = false; root.store.removeSetup(root.selectedId) }
-      }
-      Button {
-        text: "Cancel"
-        onClicked: root.confirmingDelete = false
+      Row {
+        spacing: Style.spacing.lg
+        Text {
+          anchors.verticalCenter: parent.verticalCenter
+          width: Math.min(implicitWidth, root.width - deleteButtons.width - Style.spacing.lg)
+          wrapMode: Text.WordWrap
+          text: "Delete " + (root.selected ? String(root.selected.name || root.selected.id) : "") + "?"
+            + (!root.selectedRow || !root.selectedRow.active ? ""
+              : root.all.length === 1 ? " Omarchy then arranges your displays as usual."
+              : " Bento then uses whichever other setup matches, or Omarchy's own arrangement.")
+          color: root.fg
+          font.family: Style.font.family
+          font.pixelSize: Style.font.body
+        }
+        Row {
+          id: deleteButtons
+          anchors.verticalCenter: parent.verticalCenter
+          spacing: Style.spacing.lg
+          Button {
+            text: "Delete"
+            bordered: true
+            foreground: Color.urgent
+            enabled: root.editable
+            onClicked: { root.confirmingDelete = false; root.store.removeSetup(root.selectedId) }
+          }
+          Button {
+            text: "Cancel"
+            onClicked: root.confirmingDelete = false
+          }
+        }
       }
     }
 
@@ -291,7 +314,7 @@ Column {
           readonly property var box: drawing.fitted.items[index] || ({ x: 0, y: 0, w: 0, h: 0 })
           readonly property bool connected: Data.isConnected(root.setupState, entry.display)
           readonly property var size: Data.logicalSize(entry, root.omarchyScales)
-          readonly property bool picked: index === root.selectedDisplay
+          readonly property bool picked: index === root.selectedDisplay && root.displays.length > 1
 
           x: box.x + 2
           y: box.y + Style.spacing.lg + 2
@@ -370,8 +393,12 @@ Column {
         readonly property bool scalable: Data.scaleEditable(entry, root.omarchyScales)
         readonly property string scaleValue: typeof entry.scale === "number" ? String(entry.scale) : ""
 
+        // Too narrow for name and controls side by side: controls go below.
+        readonly property real controlsWidth: (scaleChoice.visible ? looksLike.implicitWidth + Style.spacing.dropdownWidth + Style.spacing.lg * 2 : 0) + primaryButton.implicitWidth
+        readonly property bool stacked: width < controlsWidth + Style.space(120)
         width: root.width
-        height: Math.max(rowLabel.implicitHeight, controls.height) + Style.spacing.panelPadding
+        height: (stacked ? rowLabel.implicitHeight + Style.spacing.md + controls.height
+                         : Math.max(rowLabel.implicitHeight, controls.height)) + Style.spacing.panelPadding
         color: index === root.selectedDisplay && root.displays.length > 1 ? Qt.rgba(root.fg.r, root.fg.g, root.fg.b, 0.04) : "transparent"
         radius: Style.cornerRadius
 
@@ -379,7 +406,11 @@ Column {
 
         Column {
           id: rowLabel
-          anchors { left: parent.left; leftMargin: Style.spacing.md; right: controls.left; rightMargin: Style.spacing.lg; verticalCenter: parent.verticalCenter }
+          anchors {
+            left: parent.left; leftMargin: Style.spacing.md
+            right: displayRow.stacked ? parent.right : controls.left; rightMargin: displayRow.stacked ? Style.spacing.md : Style.spacing.lg
+          }
+          y: displayRow.stacked ? Style.spacing.panelPadding / 2 : (displayRow.height - height) / 2
           spacing: 3
           Text {
             width: parent.width
@@ -406,10 +437,12 @@ Column {
 
         Row {
           id: controls
-          anchors { right: parent.right; rightMargin: Style.spacing.md; verticalCenter: parent.verticalCenter }
+          x: displayRow.stacked ? Style.spacing.md : displayRow.width - width - Style.spacing.md
+          y: displayRow.stacked ? rowLabel.y + rowLabel.height + Style.spacing.md : (displayRow.height - height) / 2
           spacing: Style.spacing.lg
 
           Text {
+            id: looksLike
             anchors.verticalCenter: parent.verticalCenter
             visible: scaleChoice.visible
             text: "Looks like"
@@ -420,6 +453,9 @@ Column {
           Dropdown {
             id: scaleChoice
             anchors.verticalCenter: parent.verticalCenter
+            // Shrinks so the row still fits the window at its narrowest.
+            width: Math.max(Style.space(120), Math.min(Style.spacing.dropdownWidth,
+              displayRow.width - Style.spacing.md * 2 - looksLike.implicitWidth - primaryButton.implicitWidth - Style.spacing.lg * 2))
             visible: displayRow.scalable && options.length > 0
             enabled: root.editable
             options: Data.scaleOptions(displayRow.entry, root.omarchyScales, Data.requestedMode(root.setupState, displayRow.entry.display))
@@ -431,9 +467,15 @@ Column {
               // so a rollback shows the scale that's really saved.
               scaleChoice.value = Qt.binding(function() { return displayRow.scaleValue })
             }
-            onPopupOpenChanged: if (!popupOpen) root.doneTyping()
+            // Its list opens below it, so make room under it first.
+            onPopupOpenChanged: {
+              if (popupOpen) root.reveal(scaleChoice, Math.min(options.length, 8) * (popupRowHeight + Style.spacing.labelGap) + Style.spacing.xxs * 2)
+              else root.doneTyping()
+            }
+            Connections { target: root; function onCloseLists() { scaleChoice.close() } }
           }
           Button {
+            id: primaryButton
             anchors.verticalCenter: parent.verticalCenter
             text: "★ Primary"
             bordered: true
@@ -571,7 +613,8 @@ Column {
     id: choiceRow
     property string name: ""
     property string note: ""
-    // The setup in use: its note ("In use", "Chosen by hand") reads darker.
+    // The setup in use: its note ("In use", "Chosen by hand") reads darker,
+    // and it isn't greyed even when what it saved isn't all connected.
     property bool strong: false
     property bool chosen: false
     property bool usable: true
@@ -632,7 +675,7 @@ Column {
       anchors.verticalCenter: parent.verticalCenter
       text: choiceRow.name
       elide: Text.ElideRight
-      color: choiceRow.usable ? root.fg : root.faint
+      color: choiceRow.usable || choiceRow.strong ? root.fg : root.faint
       font.family: Style.font.family
       font.pixelSize: Style.font.title
     }
@@ -641,7 +684,8 @@ Column {
       anchors { left: rowName.right; leftMargin: Style.spacing.lg; right: parent.right; rightMargin: Style.spacing.lg; verticalCenter: parent.verticalCenter }
       text: choiceRow.note
       elide: Text.ElideRight
-      color: !choiceRow.usable ? root.faint : (choiceRow.strong ? root.fg : root.dim)
+      // Dim, not faint, when it can't be used: the note is what says why.
+      color: choiceRow.strong ? root.fg : root.dim
       font.family: Style.font.family
       font.pixelSize: Style.font.bodySmall
     }
@@ -673,6 +717,7 @@ Column {
         id: field
         width: Style.space(240)
         placeholderText: "Name, like Work or Home"
+        placeholderTextColor: root.dim
         maximumLength: 40
         onAccepted: editor.accept()
         Keys.onEscapePressed: function(event) { editor.cancelled(); event.accepted = true }

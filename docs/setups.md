@@ -418,8 +418,12 @@ the reason in `hand_error` ("There's no setup …", "Not connected: …").
   match gets a note ("Not matched: CalDigit TS4 missing") and can still be
   chosen by hand. That is the escape hatch for plugging the UltraFine in
   some other way. The other notes are "In use", "Chosen by hand", "Failed
-  its check", "When no other setup matches", "Stopped after a failed check"
-  and "Another setup matches better".
+  its check", "When no other setup matches", "Stopped after a failed check",
+  "Matches" (while another is chosen by hand) and "Another setup matches
+  better". In the menu, a setup's row says only why it can't be used or
+  failed its check, or that it's in use. Automatic's note says what it uses
+  now, "nothing matches now" or "stopped after a failed check", and nothing
+  while a setup is chosen by hand.
 - A setup that **failed its check** is skipped for that fingerprint and that
   version of `setups.json`. Choosing it by hand tries again.
 

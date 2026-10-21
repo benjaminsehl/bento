@@ -339,7 +339,8 @@ pick() {
     answers+=("$name${note:+$'\t'$note}") # what the menu hands back for that row
   done < <(state_jq '
     def clean: tostring | gsub("[\t\n]"; " ");
-    ["auto", "Automatic", if .active then "now: " + (name_of(.active) // .active) else "nothing matches now" end],
+    ["auto", "Automatic", if .hand then "" elif ((.stopped // "") != "") then "stopped after a failed check"
+      elif .active then "now: " + (name_of(.active) // .active) else "nothing matches now" end],
     (rows[] | select(.checked != false and .usable) | [.id, .name, .note // ""])
     | map(clean) | join("\t")')
   [[ $(state_jq 'rows | length') != 0 ]] || die "No setups yet. Save what is connected with: bento setup save <name>"

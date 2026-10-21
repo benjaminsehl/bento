@@ -923,6 +923,7 @@ return function(lib, S)
       elseif #s.when > 0 and #missing > 0 then note = "Not matched: " .. table.concat(missing, ", ") .. " missing"
       elseif #s.when == 0 then note = "When no other setup matches"
       elseif state.stopped then note = "Stopped after a failed check"
+      elseif reason == "hand" then note = "Matches"
       else note = "Another setup matches better" end
       list[#list + 1] = { id = s.id, name = s.name, matches = #s.when > 0 and #missing == 0, score = #s.when,
         usable = ok, failed = is_failed(s.id), note = note }

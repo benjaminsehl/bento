@@ -197,7 +197,7 @@ Item {
         // While Omarchy holds reloads for an update, the change waits for the
         // reload that ends it: a note, as with keymaps, not a failure.
         else if (said.indexOf("reloads are on hold") !== -1) root.finish(said.charAt(0).toUpperCase() + said.slice(1) + ".", false)
-        else if (said) root.finish("Applied, but " + said, true)
+        else if (said) root.finish("Applied. " + said, true)
         else root.finish(note || "Applied.", false)
       })
     })

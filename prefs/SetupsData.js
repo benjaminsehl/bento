@@ -97,12 +97,32 @@ function menuModel(state, file, fileReadable) {
       id: s.id,
       name: nameOf(file, state, s.id),
       usable: s.usable !== false,
+      failed: s.failed === true,
       note: String(s.note || ""),
       chosen: hand === s.id,
       active: active === s.id
     }
   })
-  return { automatic: !hand, now: active ? nameOf(file, state, active) : "", items: items }
+  var stopped = isObject(state) && typeof state.stopped === "string" && state.stopped !== ""
+  return { automatic: !hand, now: active ? nameOf(file, state, active) : "", stopped: stopped, items: items }
+}
+
+// What the Automatic choice says, in the menu and the pane: what it uses
+// now, or why nothing. Nothing while a setup is held by hand, since then
+// Automatic isn't choosing. A stop comes first: the setup still in use is
+// the one that just failed its check.
+function automaticNote(menu) {
+  if (!menu.automatic) return ""
+  if (menu.stopped) return "stopped after a failed check"
+  return menu.now ? "now: " + menu.now : "nothing matches now"
+}
+
+// A setup's note in the menu: why it failed or can't be used, or that it's
+// in use. The menu has no room for the rest ("Not matched: …").
+function menuNote(item) {
+  if (item.failed) return item.note
+  if (item.active) return "in use"
+  return item.usable ? "" : item.note
 }
 
 // The Setups pane's list: every setup in setups.json, in file order, with
