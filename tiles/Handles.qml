@@ -15,11 +15,19 @@ import "../Windows.js" as Windows
 // strips over the gaps, so everything else reaches the windows as before.
 // Bento moves the split itself, a frame at a time, and stops it short of
 // making either side smaller than windows.minTileSize.
+//
+// The scratchpad's tiles get handles too, once it's up and at rest. Its
+// surface (places/Scratchpad.qml) takes the pointer everywhere but its
+// windows, and a click there puts it away; these strips sit above it, so a
+// press on a handle doesn't.
 Item {
   id: root
 
-  // Something of Bento's is over the page: Overview, the drawer, the scratchpad.
+  // Something of Bento's is over the page: Overview, the drawer, or the
+  // scratchpad on its way.
   property bool hidden: false
+  // The scratchpad is up and at rest: its gaps get the handles.
+  property bool scratchpad: false
 
   Settings { id: settings }
   readonly property bool on: settings.get("windows", "dragResize") === true
@@ -44,8 +52,12 @@ Item {
   function gapsFor(monitor) {
     if (!monitor || !monitor.activeWorkspace) return []
     var mon = monitor.lastIpcObject || {}
-    if (mon.specialWorkspace && mon.specialWorkspace.name) return []
     var wsId = monitor.activeWorkspace.id
+    var special = mon.specialWorkspace && mon.specialWorkspace.name
+    if (special) {
+      if (!root.scratchpad || special !== "special:scratchpad") return []
+      wsId = mon.specialWorkspace.id
+    }
     var tiles = [], all = Windows.live(Hyprland.toplevels.values)
     for (var i = 0; i < all.length; i++) {
       var ipc = all[i].lastIpcObject || {}
@@ -131,6 +143,7 @@ Item {
   Component.onCompleted: root.refresh()
   onOnChanged: root.refresh()
   onHiddenChanged: root.refresh()
+  onScratchpadChanged: root.refresh()
 
   // --------------------------------------------------------- the surfaces
   Variants {
@@ -148,8 +161,11 @@ Item {
         var next = (root.on && !root.hidden) ? root.gapsFor(panel.monitor) : []
         if (JSON.stringify(next) !== JSON.stringify(panel.gaps)) panel.gaps = next
       }
-      Connections { target: root; function onTickChanged() { panel.update() } function onHiddenChanged() { panel.update() } function onOnChanged() { panel.update() } }
+      Connections { target: root; function onTickChanged() { panel.update() } function onHiddenChanged() { panel.update() } function onOnChanged() { panel.update() } function onScratchpadChanged() { panel.update() } }
 
+      // Unmapped whenever there's nothing to drag. The scratchpad's surface is
+      // mapped before it comes to rest, so mapping again after puts the strips
+      // above it.
       visible: panel.gaps.length > 0
       anchors { top: true; bottom: true; left: true; right: true }
       color: "transparent"

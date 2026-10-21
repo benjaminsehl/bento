@@ -57,7 +57,7 @@ Item {
   // For the shell's `call` IPC, and testing.
   function activeWindowIndex() { return overview.activeWindowIndex() }
   function activate(index) { overview.activate(Number(index)) }
-  function tileGaps() { return JSON.stringify({ on: handles.on, hidden: handles.hidden, gaps: handles.gapsFor(Hyprland.focusedMonitor) }) }
+  function tileGaps() { return JSON.stringify({ on: handles.on, hidden: handles.hidden, scratchpad: handles.scratchpad, gaps: handles.gapsFor(Hyprland.focusedMonitor) }) }
 
   // ------------------------------------------------------------ Hyprland
   // Run Lua inside Hyprland. A dispatch has to return a dispatcher, so the
@@ -290,9 +290,11 @@ Item {
     manifest: root.manifest
   }
 
-  // Drag handles in the gaps between tiles, out of the way of everything above.
+  // Drag handles in the gaps between tiles: the page's, or the scratchpad's
+  // once it's at rest. Out of the way of everything else above.
   Handles {
     id: handles
-    hidden: root.opened || root.scratchOpen || axis.value !== 0
+    hidden: root.opened || ((root.scratchOpen || axis.value !== 0) && !standIn.guarding)
+    scratchpad: standIn.guarding
   }
 }
