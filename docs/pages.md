@@ -47,9 +47,9 @@ Spread the fingers, press Esc or click the background to zoom back in.
 - Minimized windows have no place on screen, so they sit in a small shelf centred at the top.
 - Click a window to go to it; a minimized window comes back onto the page you're on. Click a page to go there,
   or the scratchpad to open it. The empty frame at either end starts a new page there.
-- Drag a page to put it somewhere else in the row; the others slide aside to show where it will go. The windows
-  go with it, layout and all. Drag it to the edge facing another monitor (it lights up with that monitor's name) and
-  it becomes the last page there. Esc while dragging puts it back. Empty pages don't drag.
+- Drag a page by the strip above it, where its dot is, to put it somewhere else in the row; the others slide aside
+  to show where it will go. The windows go with it, layout and all. Drag it to the edge facing another monitor (it
+  lights up with that monitor's name) and it becomes the last page there. Esc while dragging puts it back. Empty pages don't drag.
 - Drag a window instead to move just that window: onto another page (it's outlined), onto the empty frame at
   either end for a new page there, or onto another monitor's edge for the page that monitor is showing. A click
   on a window still goes to it; the drag starts once the pointer moves.

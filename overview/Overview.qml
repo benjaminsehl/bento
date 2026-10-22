@@ -26,11 +26,12 @@ import "../Windows.js" as Windows
 // to go to it, a page to go there, or an empty frame at either end for a new
 // page. Overview covers the page, not the bar.
 //
-// Drag a page to put it somewhere else in the row; the others make room. Drag
-// it to the edge facing another monitor and it moves there, to the end of
-// that monitor's pages. pages.lua does the moving (move_page). Drag a window
-// instead and just the window goes: onto another page, an empty frame for a
-// new page, or another monitor's edge for the page that monitor is showing.
+// Drag a page by the strip with its dot to put it somewhere else in the row;
+// the others make room. Drag it to the edge facing another monitor and it
+// moves there, to the end of that monitor's pages. pages.lua does the moving
+// (move_page). Drag a window instead and just the window goes: onto another
+// page, an empty frame for a new page, or another monitor's edge for the page
+// that monitor is showing.
 Item {
   id: root
 
@@ -569,7 +570,17 @@ Item {
   // The theme's text colour, see-through: shows on light wallpapers and dark.
   function ink(a) { return Qt.rgba(Color.foreground.r, Color.foreground.g, Color.foreground.b, a) }
 
-  function dragStart(index, press) {
+  // A drag starts from a page's MouseAreas: the page's own, its handle, or
+  // one of its windows. Each has its own DragHandler, inside it, so a click
+  // still reaches the MouseArea; one laid over them all took the clicks too.
+  // It stays on for the page whose drag it is, a window's as much as the
+  // page's: turned off, it would keep the pointer but stop following it.
+  function canDrag(page) {
+    return root.opened && !root.holding && page.windows.length > 0
+      && (root.dragId === -1 || root.dragId === page.id)
+  }
+
+  function dragStart(index, winIndex, press) {
     var page = root.layout.pages[index]
     if (!page) return
     root.zones = monitorZones()
@@ -578,12 +589,7 @@ Item {
     root.dropMonitor = ""
     root.dropPage = -1
     root.dropGhost = ""
-    // The topmost window under the press, if any.
-    var win = null
-    for (var i = page.windows.length - 1; i >= 0 && !win; i--) {
-      var e = root.layout.windows[page.windows[i].index]
-      if (press.x >= e.x && press.x <= e.x + e.w && press.y >= e.y && press.y <= e.y + e.h) win = e
-    }
+    var win = winIndex >= 0 ? root.layout.windows[winIndex] : null
     var from = win || page
     root._grabX = press.x - from.x
     root._grabY = press.y - from.y
@@ -856,7 +862,27 @@ Item {
               height: root.dotSize
               radius: height / 2
               color: Color.foreground
-              opacity: (mini.modelData.focused ? 1 : 0.5) * root.chrome
+              opacity: (mini.modelData.focused || handle.containsMouse || mini.lifted ? 1 : 0.5) * root.chrome
+            }
+
+            // The strip with the dot is the page's handle: windows nearly
+            // fill a page, and dragging one of them moves just that window.
+            MouseArea {
+              id: handle
+              y: -root.indicatorHeight
+              width: parent.width
+              height: root.indicatorHeight
+              hoverEnabled: true
+              cursorShape: Qt.OpenHandCursor
+              onClicked: root.goToPage(mini.modelData.id)
+              DragHandler {
+                target: null
+                enabled: root.canDrag(mini.modelData)
+                cursorShape: Qt.ClosedHandCursor
+                onActiveChanged: if (active) root.dragStart(mini.index, -1, centroid.scenePressPosition); else root.drop()
+                onCentroidChanged: if (active) root.dragMove(centroid.scenePosition)
+                onCanceled: root.drop()
+              }
             }
 
             MouseArea {
@@ -865,6 +891,14 @@ Item {
               hoverEnabled: true
               cursorShape: Qt.PointingHandCursor
               onClicked: root.goToPage(mini.modelData.id)
+              DragHandler {
+                target: null
+                enabled: root.canDrag(mini.modelData)
+                cursorShape: Qt.ClosedHandCursor
+                onActiveChanged: if (active) root.dragStart(mini.index, -1, centroid.scenePressPosition); else root.drop()
+                onCentroidChanged: if (active) root.dragMove(centroid.scenePosition)
+                onCanceled: root.drop()
+              }
             }
 
             // At the page's own size, then scaled: crisp when the camera is
@@ -986,6 +1020,14 @@ Item {
                     cursorShape: Qt.PointingHandCursor
                     onEntered: root.selected = frame.modelData.index
                     onClicked: root.activate(frame.modelData.index)
+                    DragHandler {
+                      target: null
+                      enabled: root.canDrag(mini.modelData)
+                      cursorShape: Qt.ClosedHandCursor
+                      onActiveChanged: if (active) root.dragStart(mini.index, frame.modelData.index, centroid.scenePressPosition); else root.drop()
+                      onCentroidChanged: if (active) root.dragMove(centroid.scenePosition)
+                      onCanceled: root.drop()
+                    }
                   }
                 }
               }
@@ -1002,26 +1044,6 @@ Item {
               border.color: target ? Color.accent
                 : mini.modelData.focused ? Qt.rgba(1, 1, 1, 0.55) : Qt.rgba(1, 1, 1, 0.1)
               opacity: root.chrome
-            }
-
-            // Over everything on the page, so a drag can start on a window
-            // too. It only takes the pointer once it moves; a click still
-            // goes to the window or the page.
-            Item {
-              anchors.fill: parent
-              DragHandler {
-                id: dragger
-                target: null
-                enabled: root.opened && !root.holding && mini.modelData.windows.length > 0
-                  && (root.dragId === -1 || mini.lifted)
-                cursorShape: Qt.ClosedHandCursor
-                onActiveChanged: {
-                  if (active) root.dragStart(mini.index, centroid.scenePressPosition)
-                  else root.drop()
-                }
-                onCentroidChanged: if (active) root.dragMove(centroid.scenePosition)
-                onCanceled: root.drop()
-              }
             }
           }
         }

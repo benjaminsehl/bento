@@ -59,9 +59,9 @@ The scratchpad sits underneath and minimized windows sit above.
 ![Overview: every page, the scratchpad and minimized windows](docs/images/overview.png)
 
 Click a window to go to it, or a page to go there. The empty frame at either
-end starts a new page. Drag a page to reorder it, or to the edge facing
-another monitor to move it there. Drag a single window to send just that
-window to another page, a new one, or the other monitor. You can also move
+end starts a new page. Drag a page by its dot to reorder it, or to the edge
+facing another monitor to move it there. Drag a single window to send just
+that window to another page, a new one, or the other monitor. You can also move
 around with the arrow keys and pick with ↩. Spread your fingers to zoom back
 in. With Overview closed, spreading shows the desktop.
 
