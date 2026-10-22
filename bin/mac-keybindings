@@ -30,7 +30,7 @@ fi
 to_mac_glyphs() {
   gawk -F '\t' -v OFS='\t' '
     BEGIN {
-      # Bento's layout swaps the keys: ⌘ sends Ctrl, ⌃ sends Super, ⌥ is MOD5.
+      # The Bento layout swaps the keys: ⌘ sends Ctrl, ⌃ sends Super, ⌥ is MOD5.
       glyph["CTRL"] = "⌘"; glyph["CONTROL"] = "⌘"; glyph["ALT"] = "⌥"; glyph["MOD5"] = "⌥"
       glyph["SHIFT"] = "⇧"; glyph["SUPER"] = "⌃"
       order = "⌃⌥⇧⌘"
