@@ -106,11 +106,11 @@ _G.bento = { repo = repo, settings = S, special_now = lib.special_now }
 -- The state directory first: setups.lua writes its state file there.
 os.execute("mkdir -p " .. lib.quote(lib.state))
 
--- Order matters: keyboard.lua re-registers Omarchy's Alt bindings on ⌥
--- before pages.lua and windows.lua replace some of them, setups.lua can give a
--- keyboard another keymap through what keyboard.lua shares, keys.lua binds
--- each keyboard's keys once the keymaps are settled, and windows.lua uses
--- what pages.lua shares.
+-- Order matters: keyboard.lua reads Omarchy's bindings, setups.lua can give a
+-- keyboard another style through what keyboard.lua shares, keys.lua binds
+-- each keyboard's keys once the styles are settled, and windows.lua uses
+-- what pages.lua shares. lib.finish comes last: Omarchy's Alt bindings on ⌥,
+-- and its bindings for PC keyboards, minus every key a module took over.
 -- A module that fails doesn't take the others down. Its error goes to
 -- ~/.local/state/bento/errors, where bin/bento-apply looks after a reload.
 local errors = {}
@@ -118,9 +118,13 @@ for _, module in ipairs({ "keyboard", "setups", "keys", "trackpad", "pages", "wi
   local ok, err = pcall(function() dofile(repo .. "/hypr/" .. module .. ".lua")(lib, S) end)
   if not ok then errors[#errors + 1] = module .. ": " .. tostring(err) end
 end
--- Omarchy's bindings, as keyboard.lua recorded them, are for lib.on_mac while
--- the modules load. Nothing after the load may use them (docs/safety.md,
--- rule 1), so they go.
+-- Last, the bindings that waited for every module (lib.finish).
+local finished, finish_err = pcall(lib.finish)
+if not finished then errors[#errors + 1] = "keys: " .. tostring(finish_err) end
+
+-- Omarchy's bindings, as keyboard.lua recorded them, are for lib.on_mac and
+-- lib.finish while the modules load. Nothing after the load may use them
+-- (docs/safety.md, rule 1), so they go.
 lib.omarchy_binds = {}
 
 local f = io.open(lib.state .. "/errors", "w")

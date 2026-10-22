@@ -145,8 +145,10 @@ return function(lib, S)
   -- ----------------------------------------------- Omarchy's Alt, on Option
   -- No key sends Alt any more, so every Omarchy binding that uses ALT would be
   -- out of reach. Re-read Omarchy's own binding files and register each of
-  -- those again with ALT replaced by MOD5 (⌥). Everything else they bind is
-  -- skipped, so nothing is bound twice, and Omarchy updates carry over.
+  -- those again with ALT replaced by MOD5 (⌥), in lib.finish once every
+  -- module has run, so a ⌥ key a module takes over is simply left out.
+  -- Everything else they bind is skipped, so nothing is bound twice, and
+  -- Omarchy updates carry over.
   -- The same pass records every Omarchy binding by key, so that what Bento
   -- takes away from Mac keyboards comes back on PC keyboards (lib.on_mac).
   do
@@ -157,7 +159,7 @@ return function(lib, S)
       lib.omarchy_binds[id] = lib.omarchy_binds[id] or {}
       table.insert(lib.omarchy_binds[id], { keys = keys, dispatcher = dispatcher, opts = opts })
       if keys:find("%f[%w]ALT%f[%W]") then
-        real_bind((keys:gsub("%f[%w]ALT%f[%W]", "MOD5")), dispatcher, opts)
+        table.insert(lib.alt_mirrors, { keys = (keys:gsub("%f[%w]ALT%f[%W]", "MOD5")), dispatcher = dispatcher, opts = opts })
       end
     end
     hl.on = function() end

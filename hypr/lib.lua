@@ -91,7 +91,17 @@ function lib.eval(chunk, delay_ms)
   hl.exec_cmd(cmd)
 end
 
+-- Takes a key over: Omarchy's binding for it goes, on every keyboard (that's
+-- what hl.unbind does), and this one comes in. Only for a key that's
+-- Omarchy's, or this module's from the same pass: never another module's
+-- (docs/safety.md). lib.taken remembers it for lib.finish.
 function lib.rebind(keys, description, dispatcher, options)
+  local scope = lib.in_mac and "mac"
+    or (options and options.device ~= nil and (options.device == lib.pc and "pc" or "some"))
+    or "all"
+  local id = lib.key_id(keys)
+  lib.taken[id] = lib.taken[id] or {}
+  lib.taken[id][scope] = true
   hl.unbind(keys)
   o.bind(keys, description, dispatcher, options)
 end
@@ -118,6 +128,14 @@ lib.mac, lib.pc = nil, nil
 -- your ~/.config/hypr binds or unbinds itself.
 lib.omarchy_binds, lib.your_keys = {}, {}
 
+-- Bindings that wait for lib.finish, once every module has bound its keys:
+-- Omarchy's Alt bindings again on ⌥ (keyboard.lua), and Omarchy's bindings
+-- for keys Mac keyboards took over, on PC keyboards (lib.on_mac). Waiting
+-- means no module ever has to unbind one of them. lib.taken: the keys
+-- modules took over with lib.rebind, each with where ("all", "pc", "mac",
+-- "some" for another device list).
+lib.alt_mirrors, lib.pc_returns, lib.taken = {}, {}, {}
+
 -- "SUPER + SHIFT + code:12" and "shift+super+CODE:12" are the same key.
 function lib.key_id(keys)
   local parts = {}
@@ -138,34 +156,48 @@ local function copy(t)
 end
 
 -- Runs fn with every binding it makes limited to Mac keyboards. Omarchy's
--- bindings for the keys it unbinds come back on PC keyboards, unless your
--- ~/.config/hypr binds that key itself. Without Mac keyboards fn doesn't run.
+-- bindings for the keys it unbinds come back on PC keyboards in lib.finish,
+-- unless your ~/.config/hypr binds that key itself. Without Mac keyboards fn
+-- doesn't run.
 function lib.on_mac(fn)
   if not lib.mac then return end
   local real_bind, real_unbind = hl.bind, hl.unbind
-  local unbound, order = {}, {}
   hl.bind = function(keys, dispatcher, opts)
     opts = copy(opts)
     if opts.device == nil then opts.device = lib.mac end
     return real_bind(keys, dispatcher, opts)
   end
   hl.unbind = function(keys)
-    local id = lib.key_id(keys)
-    if not unbound[id] then unbound[id] = true; order[#order + 1] = id end
+    lib.pc_returns[#lib.pc_returns + 1] = lib.key_id(keys)
     return real_unbind(keys)
   end
+  lib.in_mac = true
   local ok, err = pcall(fn)
+  lib.in_mac = nil
   hl.bind, hl.unbind = real_bind, real_unbind
-  for _, id in ipairs(order) do
-    if not lib.your_keys[id] then
+  if not ok then error(err, 0) end
+end
+
+-- The bindings that waited (above), once every module has run. A key a
+-- module took over since stays the module's: an Alt binding isn't put back
+-- on ⌥ once anything took that ⌥ key, and Omarchy's binding doesn't come
+-- back on PC keyboards once a module bound that key there too.
+function lib.finish()
+  for _, m in ipairs(lib.alt_mirrors) do
+    if not lib.taken[lib.key_id(m.keys)] then hl.bind(m.keys, m.dispatcher, m.opts) end
+  end
+  local done = {}
+  for _, id in ipairs(lib.pc_returns) do
+    local taken = lib.taken[id] or {}
+    if not done[id] and not lib.your_keys[id] and not taken.all and not taken.pc then
+      done[id] = true
       for _, b in ipairs(lib.omarchy_binds[id] or {}) do
         local opts = copy(b.opts)
         opts.device = lib.pc
-        real_bind(b.keys, b.dispatcher, opts)
+        hl.bind(b.keys, b.dispatcher, opts)
       end
     end
   end
-  if not ok then error(err, 0) end
 end
 
 -- A binding for PC keyboards only.

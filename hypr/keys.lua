@@ -51,13 +51,13 @@ return function(lib, S)
   end
 
   -- ---------------------------------------------------- every keyboard
-  -- ⌃ on a Mac keyboard, Super on a PC one. windows.lua puts Overview on ↑
-  -- and the drawer on ↓ when they're on. Left and right stay on this
-  -- monitor's pages ("m"), as swipes do.
+  -- ⌃ on a Mac keyboard, Super on a PC one. Left and right stay on this
+  -- monitor's pages ("m"), as swipes do. ↑ and ↓ are windows.lua's when
+  -- Overview and the drawer are on: one owner per key (docs/safety.md).
   rebind("SUPER + LEFT", "Previous workspace", hl.dsp.focus({ workspace = "m-1" }))
   rebind("SUPER + RIGHT", "Next workspace", hl.dsp.focus({ workspace = "m+1" }))
-  rebind("SUPER + UP", "Toggle scratchpad", lib.toggle_scratchpad)
-  rebind("SUPER + DOWN", "Hide the scratchpad", lib.hide_special)
+  if not S.windows.overview then rebind("SUPER + UP", "Toggle scratchpad", lib.toggle_scratchpad) end
+  if not S.windows.minimize then rebind("SUPER + DOWN", "Hide the scratchpad", lib.hide_special) end
 
   -- PC: Omarchy's focus keys move from Super+arrows to Super+Alt+arrows, as
   -- they move to ⌃⌥ on a Mac keyboard. Omarchy's move-into-group keys there
@@ -257,7 +257,7 @@ return function(lib, S)
     end
     lib.magic_keyboard = { inclusive = true, list = names }
     local not_apple = { inclusive = false, list = names }
-    o.bind("XF86LaunchA", "Mission Control (scratchpad)", lib.toggle_scratchpad)
+    if not S.windows.overview then o.bind("XF86LaunchA", "Mission Control (scratchpad)", lib.toggle_scratchpad) end
     o.bind("XF86Search", "Apps menu", "omarchy-menu toggle apps")
     hl.unbind("XF86AudioMicMute")
     o.bind("XF86AudioMicMute", "Mute microphone", "omarchy-audio-input-mute", { locked = true, device = not_apple })
