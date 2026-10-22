@@ -104,8 +104,8 @@ lib.omarchy_binds, lib.your_keys = {}, {}
 -- "SUPER + SHIFT + code:12" and "shift+super+CODE:12" are the same key.
 function lib.key_id(keys)
   local parts = {}
-  for part in tostring(keys):gmatch("[^+]+") do
-    part = part:gsub("^%s+", ""):gsub("%s+$", ""):upper()
+  for raw in tostring(keys):gmatch("[^+]+") do
+    local part = raw:gsub("^%s+", ""):gsub("%s+$", ""):upper()
     if part ~= "" then parts[#parts + 1] = part end
   end
   local key = table.remove(parts)
