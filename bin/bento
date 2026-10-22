@@ -4,11 +4,17 @@
 #   bento overview | bento drawer
 # or work with setups (bin/bento-setup has the list):
 #   bento setup ...
+# or load Bento again after its breaker paused it (see install.sh's stub):
+#   bento resume
 view=${1:-preferences}
 case $view in
   setup) shift; exec "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/bento-setup" "$@" ;;
+  resume)
+    state=${XDG_STATE_HOME:-$HOME/.local/state}/bento
+    rm -f "$state/paused" "$state/paused-told" "$state/starting"
+    exec hyprctl reload ;;
   preferences|overview|drawer) ;;
-  *) echo "usage: bento [preferences [pane]|overview|drawer|setup ...]" >&2; exit 2 ;;
+  *) echo "usage: bento [preferences [pane]|overview|drawer|setup ...|resume]" >&2; exit 2 ;;
 esac
 payload=$(jq -cn --arg view "$view" --arg pane "${2:-}" '{view: $view} + (if $pane == "" then {} else {pane: $pane} end)')
 exec omarchy-shell shell summon io.github.benjaminsehl.bento "$payload"

@@ -85,19 +85,69 @@ done
 # once that is gone, starts the cleanup instead. It names no checkout, so an
 # update leaves it alone.
 stub=$(cat <<'EOF'
--- Written by Bento (io.github.benjaminsehl.bento), stub 2. Bento deletes this
+-- Written by Bento (io.github.benjaminsehl.bento), stub 3. Bento deletes this
 -- file when it is disabled or removed in Omarchy; deleting it by hand is safe.
 local home = os.getenv("HOME") or ""
 local plugin = home .. "/.config/omarchy/plugins/io.github.benjaminsehl.bento"
+local state = (os.getenv("XDG_STATE_HOME") or (home .. "/.local/state")) .. "/bento"
+local function read(path)
+  local h = io.open(path, "r")
+  if not h then return nil end
+  local s = h:read("a")
+  h:close()
+  return s
+end
+local function write(path, s)
+  local h = io.open(path, "w")
+  if h then h:write(s); h:close() end
+end
+local function notify(title, body)
+  local q = function(s) return "'" .. s:gsub("'", "'\\''") .. "'" end
+  pcall(os.execute, "setsid -f sh -c " .. q("sleep 3; notify-send -u critical " .. q(title) .. " " .. q(body))
+    .. " </dev/null >/dev/null 2>&1")
+end
+
 local f = io.open(plugin .. "/hypr/bento.lua", "r")
 if f then
   f:close()
-  _G.bento_repo, _G.bento_stub = plugin, 2
-  dofile(plugin .. "/hypr/bento.lua")
+  -- The breaker. Bento's Lua runs inside Hyprland, so a bug in it can take
+  -- Hyprland down. Each Hyprland marks its first two minutes with Bento in
+  -- `starting`. If the next Hyprland finds another one's mark, that one
+  -- stopped while Bento was new to it, so Bento stays off (`paused`) until
+  -- `bento resume`, and Hyprland comes up as stock Omarchy.
+  local me = os.getenv("HYPRLAND_INSTANCE_SIGNATURE") or "?"
+  local starting, paused = state .. "/starting", state .. "/paused"
+  local ok, skip = pcall(function()
+    if read(paused) then return true end
+    local other = read(starting)
+    if other and other ~= me then
+      write(paused, "Hyprland " .. other .. " stopped within two minutes of loading Bento.\n")
+      return true
+    end
+    return false
+  end)
+  if not ok or skip then
+    if read(state .. "/paused-told") ~= me then
+      write(state .. "/paused-told", me)
+      notify("Bento is paused", "Hyprland stopped soon after loading Bento, so this time it started without it. "
+        .. "Run `bento resume` to load Bento again.")
+    end
+  else
+    pcall(os.execute, "mkdir -p '" .. state:gsub("'", "'\\''") .. "'")
+    write(starting, me)
+    pcall(hl.timer, function() os.remove(starting) end, { timeout = 120000, type = "oneshot" })
+    _G.bento_repo, _G.bento_stub = plugin, 3
+    -- An error stops at Bento: the rest of your config still loads.
+    local loaded, err = pcall(dofile, plugin .. "/hypr/bento.lua")
+    if not loaded then
+      write(state .. "/errors", "bento.lua: " .. tostring(err))
+      notify("Bento didn't load", tostring(err))
+    end
+  end
 else
   -- The plugin is gone: put Omarchy back, in the background.
   pcall(function()
-    local cleanup = home .. "/.local/state/bento/bento-cleanup"
+    local cleanup = state .. "/bento-cleanup"
     local c = io.open(cleanup, "r")
     if c then
       c:close()

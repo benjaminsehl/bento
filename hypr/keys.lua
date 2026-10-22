@@ -238,44 +238,11 @@ return function(lib, S)
   end)
 
   -- ----------------------------------------------- PC keyboards in Ghostty
-  -- Ghostty's Bento config is written for Mac keyboards: Ctrl+C copies,
-  -- because that's ⌘C, and Super+C sends ^C, because that's ⌃C. Ghostty
-  -- can't tell keyboards apart, so for PC keyboards Hyprland translates, the
-  -- Linux way: Ctrl + letter is the control character, Ctrl+Shift+C copies.
-  -- The bindings are on only while a terminal has focus; if one fires
-  -- anywhere else, the key goes through as it was.
-  if S.terminal.ghostty then
-    local translations = {}
-    for c in ("ABCDEFGHIJKLMNOPQRSTUVWXYZ"):gmatch(".") do
-      translations[#translations + 1] = { "CTRL", c, "SUPER", c, "Control character" }
-    end
-    for _, c in ipairs({ "C", "V", "T", "W", "N", "F" }) do
-      translations[#translations + 1] = { "CTRL SHIFT", c, "CTRL", c, "Terminal: Ctrl+Shift+" .. c }
-    end
-    for _, t in ipairs({
-      { "CTRL", "LEFT", "ALT", "LEFT", "Word back" },
-      { "CTRL", "RIGHT", "ALT", "RIGHT", "Word forward" },
-      { "CTRL", "BackSpace", "SUPER", "W", "Delete word" },
-    }) do translations[#translations + 1] = t end
-
-    local binds = {}
-    for _, t in ipairs(translations) do
-      local from_mods, from_key, to_mods, to_key = t[1], t[2], t[3], t[4]
-      local keys = from_mods:gsub(" ", " + ") .. " + " .. from_key:upper()
-      binds[#binds + 1] = hl.bind(keys, function()
-        if is_terminal() then send_once(to_mods, to_key) else send_once(from_mods, from_key) end
-      end, { description = t[5], device = lib.pc, repeating = true })
-    end
-
-    local function follow()
-      local on = is_terminal()
-      for _, b in ipairs(binds) do
-        if type(b) == "table" or type(b) == "userdata" then pcall(function() b:set_enabled(on) end) end
-      end
-    end
-    follow()
-    hl.on("window.active", follow)
-  end
+  -- Not translated for now. The first version kept Hyprland's bind objects
+  -- and switched them on and off whenever a window took focus. Once
+  -- windows.lua rebound Ctrl+M, one of those objects no longer existed, and
+  -- Hyprland crashed on the next focus. Bento keeps no Hyprland objects and
+  -- changes no bindings from events: see docs/safety.md.
 
   -- ------------------------------------------------- Magic Keyboard top row
   -- An Apple keyboard's top row sends its Mac functions with fn (Omarchy's

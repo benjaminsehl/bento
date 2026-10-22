@@ -269,6 +269,11 @@ says so: "Recorded on the Dell (PC). Saved for Mac as ⌃⌥→".
 
 ## Ghostty
 
+> **Off for now (22 October 2026).** The first version switched its bindings
+> on and off on every change of focus, and that crashed Hyprland (see
+> [docs/safety.md](safety.md)). PC keyboards get Ghostty's Mac keys until it's
+> rebuilt with each binding checking for a terminal itself.
+
 Ghostty's config applies to the whole app and can't tell keyboards apart.
 Today it assumes the Mac keyboard: Ctrl+C copies, because that's ⌘C, and
 Super+C sends ^C, because that's ⌃C.

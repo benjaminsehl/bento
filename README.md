@@ -169,7 +169,10 @@ desktop. Only what differs from [`defaults.json`](defaults.json) is saved, in
 5. **Opinionated, not locked in.** Strong defaults, each with a switch.
    Removing Bento gives you back stock Omarchy.
 6. **Never break the desktop.** Every change is checked and rolled back if
-   Hyprland complains, and a failing module doesn't take the others down.
+   Hyprland complains, and a failing module doesn't take the others down. If
+   Hyprland ever stops soon after loading Bento, the next login starts without
+   it until you run `bento resume`. The rules Bento's Lua keeps are in
+   [`docs/safety.md`](docs/safety.md).
 7. **Readable.** A few Lua and QML files you can search. Behaviour lives in
    Hyprland, and interface in the Omarchy shell.
 
@@ -274,6 +277,7 @@ remove`: the shell keeps the older Bento's Service until it restarts.
 ## Docs
 
 - [`docs/keymap.md`](docs/keymap.md): every key and gesture, and why.
+- [`docs/safety.md`](docs/safety.md): how Bento gets into Hyprland, the breaker, and the rules its Lua keeps.
 - [`docs/pages.md`](docs/pages.md): pages, Overview and the drawer in detail.
 - [`docs/setups.md`](docs/setups.md): setups, per-desk display layouts and keyboard styles, and tiled displays.
 - [`defaults.json`](defaults.json) and [`prefs/Schema.js`](prefs/Schema.js): every setting.
