@@ -162,6 +162,51 @@ local function omarchy_scales(text, internal)
 end
 
 -- ---------------------------------------------------------------- setups.json
+-- Two whole numbers Hyprland can take (it reads positions as 32-bit).
+local function pair(v, positive)
+  if type(v) ~= "table" or type(v[1]) ~= "number" or type(v[2]) ~= "number" then return nil end
+  if positive and (v[1] <= 0 or v[2] <= 0) then return nil end
+  local a, b = int(v[1]), int(v[2])
+  if not a or not b or math.abs(a) >= 1 << 30 or math.abs(b) >= 1 << 30 then return nil end
+  return { a, b }
+end
+
+-- One display of a setup, as placing reads it; else nil and why it can't be
+-- placed (the rest of a sentence about it). A field that's wrong but can be
+-- done without goes to warn(what's wrong, what's done instead), and Omarchy's
+-- is used there. An arrangement's displays are checked with this too.
+local function display_of(d, warn)
+  if type(d) ~= "table" or type(d.display) ~= "string" or d.display == "" then
+    return nil, "doesn't say which display it is"
+  end
+  local at = pair(d.at)
+  if not at then return nil, "has no position (at)" end
+  local e = {
+    display = d.display,
+    internal = d.display == "internal",
+    label = type(d.label) == "string" and d.label ~= "" and d.label or (d.display == "internal" and "Laptop" or d.display),
+    at = at,
+    native = pair(d.native, true),
+    size = pair(d.size, true),
+    primary = d.primary == true,
+    transform = 0,
+  }
+  if d.scale ~= nil then
+    if type(d.scale) == "number" and d.scale > 0 and d.scale <= 10 then e.scale = d.scale
+    else warn("has a scale that isn't a number from 0 to 10", "it follows Omarchy's") end
+  end
+  if d.transform ~= nil then
+    local t = math.tointeger(d.transform)
+    if t and t >= 0 and t <= 7 then e.transform = t
+    else warn("has a transform that isn't 0 to 7", "it's 0") end
+  end
+  if type(d.mode) == "string" and d.mode:match("^%d+x%d+") then
+    local w, h, r = d.mode:match("^(%d+)x(%d+)@?([%d%.]*)")
+    e.mode = { w = tonumber(w), h = tonumber(h), refresh = tonumber(r) }
+  end
+  return e
+end
+
 -- Checks every field. A bad setup or display is skipped, with a sentence in
 -- problems; the rest still works.
 local function validate(doc, problems)
@@ -178,14 +223,6 @@ local function validate(doc, problems)
   if type(doc.setups) ~= "table" then
     if doc.setups ~= nil then problem("setups.json's setups isn't a list, so no setups are used") end
     return setups
-  end
-  -- Two whole numbers Hyprland can take (it reads positions as 32-bit).
-  local function pair(v, positive)
-    if type(v) ~= "table" or type(v[1]) ~= "number" or type(v[2]) ~= "number" then return nil end
-    if positive and (v[1] <= 0 or v[2] <= 0) then return nil end
-    local a, b = int(v[1]), int(v[2])
-    if not a or not b or math.abs(a) >= 1 << 30 or math.abs(b) >= 1 << 30 then return nil end
-    return { a, b }
   end
 
   local taken = {}
@@ -231,37 +268,15 @@ local function validate(doc, problems)
         if s.displays ~= nil and type(s.displays) ~= "table" then problem(name .. ": its displays isn't a list") end
         for j, d in ipairs(list) do
           local what = name .. ": display " .. j
-          if type(d) ~= "table" or type(d.display) ~= "string" or d.display == "" then
-            problem(what .. " doesn't say which display it is")
-          elseif seen[d.display] then
-            problem(what .. " is " .. d.display .. " again, so it's skipped")
-          elseif not pair(d.at) then
-            problem(what .. " has no position (at)")
+          local warnings = {}
+          local e, why = display_of(d, function(wrong, instead) warnings[#warnings + 1] = wrong .. "; " .. instead end)
+          if not e then
+            problem(what .. " " .. why)
+          elseif seen[e.display] then
+            problem(what .. " is " .. e.display .. " again, so it's skipped")
           else
-            seen[d.display] = true
-            local e = {
-              display = d.display,
-              internal = d.display == "internal",
-              label = type(d.label) == "string" and d.label ~= "" and d.label or (d.display == "internal" and "Laptop" or d.display),
-              at = pair(d.at),
-              native = pair(d.native, true),
-              size = pair(d.size, true),
-              primary = d.primary == true,
-              transform = 0,
-            }
-            if d.scale ~= nil then
-              if type(d.scale) == "number" and d.scale > 0 and d.scale <= 10 then e.scale = d.scale
-              else problem(what .. " has a scale that isn't a number from 0 to 10; it follows Omarchy's") end
-            end
-            if d.transform ~= nil then
-              local t = math.tointeger(d.transform)
-              if t and t >= 0 and t <= 7 then e.transform = t
-              else problem(what .. " has a transform that isn't 0 to 7; it's 0") end
-            end
-            if type(d.mode) == "string" and d.mode:match("^%d+x%d+") then
-              local w, h, r = d.mode:match("^(%d+)x(%d+)@?([%d%.]*)")
-              e.mode = { w = tonumber(w), h = tonumber(h), refresh = tonumber(r) }
-            end
+            seen[e.display] = true
+            for _, w in ipairs(warnings) do problem(what .. " " .. w) end
             displays[#displays + 1] = e
           end
         end
@@ -334,7 +349,8 @@ return function(lib, S)
   -- hl.get_monitors(), copied into plain tables right away. It lists enabled
   -- monitors only, nothing at the first load after login, and the old layout
   -- during a reload. Right after a replug it can list a monitor at 0×0 with
-  -- no modes; a mode of no size is never kept.
+  -- no modes; a mode of no size is never kept. `mirror`: it shows another
+  -- monitor's picture (Omarchy's mirror toggle), not one of its own.
   local function monitors_now()
     local out = {}
     local ok, list = pcall(hl.get_monitors)
@@ -350,7 +366,7 @@ return function(lib, S)
       if type(m.name) == "string" then
         out[m.name] = { name = m.name, description = m.description or "", w = int(m.width) or 0, h = int(m.height) or 0,
           refresh = tonumber(m.refresh_rate) or 0, x = int(m.x) or 0, y = int(m.y) or 0, scale = tonumber(m.scale) or 1,
-          transform = int(m.transform) or 0, modes = modes }
+          transform = int(m.transform) or 0, mirror = m.is_mirror == true, modes = modes }
       end
     end
     return out
@@ -612,6 +628,11 @@ return function(lib, S)
   for _, k in ipairs({ "drift", "retry", "stopped", "guard_notice" }) do
     if type(prev[k]) ~= "string" then state[k] = nil end
   end
+  -- An arrangement by hand (see the request below) is kept only whole.
+  if type(prev.arranged) ~= "table" or type(prev.arranged.fingerprint) ~= "string"
+    or type(prev.arranged.displays) ~= "table" then
+    state.arranged = nil
+  end
 
   -- True once the file is written. Whatever has to survive a reload (the
   -- reload breaker above all) is only good when this says so. The directory
@@ -622,7 +643,7 @@ return function(lib, S)
   local function write_state()
     local out = {}
     for k, v in pairs(state) do out[k] = v end
-    for _, k in ipairs({ "active", "hand", "hand_error", "stopped" }) do
+    for _, k in ipairs({ "active", "hand", "hand_error", "stopped", "arranged" }) do
       if out[k] == nil then out[k] = json.null end
     end
     local text = json.encode(out, 2) .. "\n"
@@ -700,7 +721,8 @@ return function(lib, S)
   -- would give the tile another scale, or the one it had. So a tile that runs
   -- Omarchy's number as is, where Bento asked for something else, keeps it
   -- while that number stays. Only for a tile that follows Omarchy's scale:
-  -- a setup's own scale wins.
+  -- a setup's own scale wins. A plain display at a mode other than its
+  -- panel's own is fitted to the panel too, so the same goes for it.
   local tile_scales = {}
   for k, r in pairs(type(prev.tile_scales) == "table" and prev.tile_scales or {}) do
     if type(k) == "string" and type(r) == "table" and numeric(r.knob) and numeric(r.scale) and numeric(r.w)
@@ -753,9 +775,16 @@ return function(lib, S)
   local setups, active, reason, back_to_auto = {}, nil, "none", nil
   local fp, config = "", ""
   local placement = {} -- display key → { position, base, transform, label, primary }
-  local entries = {}   -- the active setup's displays, resolved
+  local entries = {}   -- the displays placed (the active setup's or the arrangement's), resolved
   local failed_before = false
   local named = { thunderbolt = {}, usb = {} }
+  -- An arrangement by hand: where the app put each display while no setup is
+  -- in use, each with the mode, scale and rotation it had then. It's a hold,
+  -- like a setup chosen by hand: kept while the same things are connected,
+  -- gone at the first load where they aren't. arranged_now says this load
+  -- took it from a request.
+  local arranged, arranged_before, arranged_now = nil, nil, false
+  local layout -- what's placed: the active setup, else the arrangement
 
   local connected_tb, connected_usb = {}, {}
   for _, t in ipairs(scan.thunderbolt) do
@@ -799,6 +828,53 @@ return function(lib, S)
     return not any, missing
   end
 
+  -- An arrangement: a setup with no name, in setups.json's format, that only
+  -- moves the displays. Each display is checked as a setup's is (display_of),
+  -- but anything wrong refuses the lot; each is in it once, at two whole
+  -- numbers. A new one (`here`) must also name displays that are connected,
+  -- each under its own key, and every display Hyprland shows a picture on
+  -- now, so nothing is left where it was to overlap. A picture is what
+  -- bin/bento-setup's lit_displays says it is, so nothing it lets through is
+  -- refused here: a size and a scale, never another monitor's picture (a
+  -- mirror), and never 640×480 but on a plain display Bento knows the size of
+  -- (elsewhere that's a tiled display's other stream, or DisplayPort's
+  -- fallback). Returns the displays in setups.json's format again, as the
+  -- state keeps them; else nil and why.
+  local function arrangement(list, here)
+    if type(list) ~= "table" or #list == 0 then return nil, "it names no displays" end
+    local out, seen = json.array(), {}
+    for i, a in ipairs(list) do
+      local wrong
+      local e, why = display_of(a, function(text) wrong = wrong or text end)
+      local d = here and type(a) == "table" and type(a.display) == "string" and find(displays, a.display) or nil
+      local label = d and d.label or e and e.label or ("display " .. i)
+      if here and e and not d then return nil, label .. " isn't connected" end
+      if not e then return nil, label .. " " .. why end
+      local key = d and d.display or e.display
+      if seen[key] then return nil, label .. " is in it twice" end
+      if e.at[1] ~= a.at[1] or e.at[2] ~= a.at[2] then
+        return nil, label .. " has a position that isn't two whole numbers"
+      end
+      if wrong then return nil, label .. " " .. wrong end
+      seen[key] = true
+      -- Its own label, else the display's.
+      if d and (type(a.label) ~= "string" or a.label == "") then e.label = d.label end
+      local m = e.mode
+      out[#out + 1] = { display = key, label = e.label, native = e.native and json.array(e.native),
+        size = e.size and json.array(e.size), scale = e.scale, at = json.array(e.at), transform = e.transform,
+        mode = m and string.format("%dx%d", m.w, m.h) .. (m.refresh and "@" .. num_text(m.refresh) or "") or nil }
+    end
+    for _, d in ipairs(here and displays or {}) do
+      local m = live[d.output]
+      local picture = m and not m.mirror and m.w > 0 and m.h > 0 and m.scale > 0
+        and (m.w ~= 640 or m.h ~= 480 or (not d.tiled and d.native ~= nil))
+      if not seen[d.display] and not d.unprobed and picture then
+        return nil, "it doesn't say where " .. d.label .. " goes"
+      end
+    end
+    return out
+  end
+
   try("setups", function()
     local doc, err, text = json.read(setups_path)
     config = text and fnv1a(text) or ""
@@ -836,16 +912,26 @@ return function(lib, S)
     end
 
     -- The app or `bento setup` asks through a request file: a setup by hand,
-    -- or back to automatic. It's used once.
+    -- an arrangement, or back to automatic. It's used once.
     local hand = type(prev.hand) == "table" and type(prev.hand.id) == "string" and prev.hand or nil
     local hand_error = type(prev.hand_error) == "string" and prev.hand_error or nil
+    -- The one held is checked again, display by display, as when it came.
+    local held = state.arranged
+    if held and held.fingerprint == fp then
+      local list = arrangement(held.displays)
+      arranged_before = list and { fingerprint = fp, displays = list } or nil
+    end
+    arranged = arranged_before
     local request, _, request_text = json.read(request_path)
     if request_text then
       os.remove(request_path)
       -- bin/bento-setup waits for the load that took its request: the file
       -- is gone well before this load's state is written.
       state.request_load = state.load
-      state.stopped = nil
+      -- An arrangement is for when no setup is in use, so it leaves stopped
+      -- alone: Bento still won't choose one here.
+      local arrange = type(request) == "table" and type(request.hand) ~= "string" and request.arrange ~= nil
+      if not arrange then state.stopped = nil end
       if type(request) == "table" and type(request.hand) == "string" then
         local s = by_id[request.hand]
         local ok, missing = false, {}
@@ -855,13 +941,23 @@ return function(lib, S)
         elseif not ok then
           hand_error = "Not connected: " .. table.concat(missing, ", ")
         else
-          hand, hand_error = { id = s.id, fingerprint = fp }, nil
+          hand, hand_error, arranged = { id = s.id, fingerprint = fp }, nil, nil
           for i = #failed, 1, -1 do
             if failed[i].id == s.id and failed[i].fingerprint == fp then table.remove(failed, i) end
           end
         end
+      elseif arrange then
+        -- {"arrange": {"displays": [display, …]}}, each display as a setup's
+        -- in setups.json.
+        local list, why = arrangement(type(request.arrange) == "table" and request.arrange.displays, true)
+        if list then
+          arranged, arranged_now = { fingerprint = fp, displays = list }, true
+          hand, hand_error = nil, nil
+        else
+          problems[#problems + 1] = "That arrangement can't be used: " .. why
+        end
       elseif type(request) == "table" then
-        hand, hand_error = nil, nil
+        hand, hand_error, arranged = nil, nil, nil
       end
     end
 
@@ -902,12 +998,27 @@ return function(lib, S)
         end
       end
     end
+    -- A setup in use wins: an arrangement asked for now goes, and the one
+    -- before stays for when there's none.
+    if active and arranged_now then arranged, arranged_now = arranged_before, false end
 
     state.hand = hand
     state.hand_error = hand_error
     state.failed = failed
     state.active = active and active.id or nil
     state.reason = active and reason or "none"
+    state.arranged = arranged
+
+    -- An arrangement is placed as a setup is: each display with the mode,
+    -- scale and rotation it had when it was arranged, and its place moved by
+    -- any change in size since (Omarchy's Scale shortcut, say). Only a setup
+    -- says which display is primary.
+    layout = active
+    if not layout and arranged then
+      local list = {}
+      for _, a in ipairs(arranged.displays) do list[#list + 1] = display_of(a, function() end) end
+      layout = { displays = list }
+    end
 
     local list = json.array()
     for _, s in ipairs(setups) do
@@ -943,7 +1054,7 @@ return function(lib, S)
     end
     for _, g in ipairs(guards) do
       local own = false
-      for _, e in ipairs(active and active.displays or {}) do
+      for _, e in ipairs(layout and layout.displays or {}) do
         if e.scale and find(displays, e.display) == g.display then own = true end
       end
       local m, a, t = live[g.left], asked[g.left], g.target
@@ -954,13 +1065,27 @@ return function(lib, S)
         tile_scales[g.display.display] = { knob = external_scale, scale = snap(m.scale, t.w, t.h), w = t.w }
       end
     end
+    -- A plain display with no scale of its own, at the mode asked for, where
+    -- the number as is and fitted to the panel differ.
+    for _, e in ipairs(layout and layout.displays or {}) do
+      local d = not e.internal and not e.scale and find(displays, e.display)
+      local m, a = d and live[d.output], d and asked[d.output]
+      local w, h = tostring(a and a.mode or ""):match("^(%d+)x(%d+)")
+      if d and not d.tiled and not d.unprobed and d.native and m and a and type(external_scale) == "number"
+        and numeric(a.scale) and tonumber(w) == m.w and tonumber(h) == m.h
+        and math.abs(m.scale - a.scale) > 0.001 and math.abs(m.scale - snap(external_scale, m.w, m.h)) <= 0.001
+        and math.abs(m.scale - snap(external_scale * m.w / d.native[1], m.w, m.h)) > 0.001 then
+        tile_scales[d.display] = { knob = external_scale, scale = snap(m.scale, m.w, m.h), w = m.w }
+      end
+    end
   end)
   state.tile_scales = next(tile_scales) and tile_scales or nil
 
   -- -------------------------------------------------------------- placing
-  -- Where each display of the active setup goes. Positions adapt: when a
-  -- display is missing or a different size now, the displays to its right
-  -- (and below) move by the difference, so nothing overlaps or floats.
+  -- Where each display of the active setup (or the arrangement) goes.
+  -- Positions adapt: when a display is missing or a different size now, the
+  -- displays to its right (and below) move by the difference, so nothing
+  -- overlaps or floats.
   local function logical(w, h, scale, transform)
     if type(scale) ~= "number" then return nil end
     if transform and transform % 2 == 1 then w, h = h, w end
@@ -968,8 +1093,8 @@ return function(lib, S)
   end
 
   try("placing", function()
-    if not active then return end
-    for _, e in ipairs(active.displays) do
+    if not layout then return end
+    for _, e in ipairs(layout.displays) do
       local d = e.internal and internal or find(displays, e.display)
       local x = { e = e, d = d }
       if d and d.tiled then
@@ -1006,13 +1131,18 @@ return function(lib, S)
         end
         local mode = x.mode or p
         if mode then
-          if e.scale then
-            local native_w = (d.native or e.native or { mode.w })[1]
-            x.scale = snap(e.scale * mode.w / native_w, mode.w, mode.h)
-          elseif type(external_scale) == "number" then
-            x.scale = snap(external_scale, mode.w, mode.h)
+          -- The setup's own scale, else Omarchy's number, each relative to
+          -- the panel, as save reads them (and as a tile's is): at a mode
+          -- that isn't the panel's own, the display keeps the size that
+          -- number gives the whole panel. But with no scale of its own, one
+          -- the Scale shortcut set as is stays (see tile_scales).
+          local native_w = (d.native or e.native or { mode.w })[1]
+          local rel = e.scale or numeric(external_scale)
+          local kept = not e.scale and tile_scales[d.display]
+          if kept then
+            x.scale = snap(kept.scale * mode.w / kept.w, mode.w, mode.h)
           else
-            x.scale = "auto"
+            x.scale = rel and snap(rel * mode.w / native_w, mode.w, mode.h) or "auto"
           end
           x.current = logical(mode.w, mode.h, x.scale, e.transform)
         end
@@ -1074,9 +1204,10 @@ return function(lib, S)
 
   -- Each tile guard is built whole before anything is sent: its desc: rule
   -- turns the left tile off too, so it only goes out with the left tile's
-  -- own rule ready to follow. `own` marks what the active setup decided, so
-  -- the check knows whose fault a difference is: the left tile's place and
-  -- scale when the setup names the display, never the other tiles.
+  -- own rule ready to follow. `own` marks what the active setup (or the
+  -- arrangement) decided, so the check knows whose fault a difference is: the
+  -- left tile's place and scale when it names the display, never the other
+  -- tiles.
   local built = {}
   for _, g in ipairs(guards) do
     local d, p = g.display, placement[g.display.display]
@@ -1111,10 +1242,10 @@ return function(lib, S)
       end
     end)
   end
-  -- 3. The active setup's other displays, each on its own: one that can't be
-  --    built or sent costs only its own rule, and only a rule that went out
-  --    is checked. Displays it doesn't name get no rule: Omarchy's catch-all
-  --    looks after them.
+  -- 3. The active setup's (or the arrangement's) other displays, each on its
+  --    own: one that can't be built or sent costs only its own rule, and only
+  --    a rule that went out is checked. Displays it doesn't name get no rule:
+  --    Omarchy's catch-all looks after them.
   for _, x in ipairs(entries) do
     local d = x.d
     if d and not d.tiled and not (d.internal and mirrored) then
@@ -1153,11 +1284,12 @@ return function(lib, S)
 
   -- The primary display: the setup's, else its first connected one. The
   -- cursor starts there at login; after a change of setup, focus moves there.
+  -- An arrangement has none: where the cursor starts stays Omarchy's.
   local primary
-  for _, x in ipairs(entries) do
+  for _, x in ipairs(active and entries or {}) do
     if x.d and x.e.primary then primary = x.d.output end
   end
-  for _, x in ipairs(entries) do
+  for _, x in ipairs(active and entries or {}) do
     if not primary and x.d then primary = x.d.output end
   end
   if primary then pcall(hl.config, { cursor = { default_monitor = primary } }) end
@@ -1268,7 +1400,7 @@ return function(lib, S)
   end
 
   -- What differs between the rules and what Hyprland shows, in words, and
-  -- whether any of it is the active setup's doing.
+  -- whether any of it is the active setup's (or the arrangement's) doing.
   local function differences(now)
     local out, mine = {}, false
     for _, it in ipairs(items) do
@@ -1359,10 +1491,12 @@ return function(lib, S)
 
   -- A failure is the active setup's when it decided something that came out
   -- wrong. Then it's marked failed here and Bento tries again without it,
-  -- once; after that it stops choosing until the devices change. Anything
-  -- else is the tile guard's or Hyprland's: no setup would do better, so it's
-  -- only said, once for these devices and this difference, and never
-  -- reloads.
+  -- once; after that it stops choosing until the devices change. A failure
+  -- of an arrangement puts the one before back, when this load took the new
+  -- one, else none: at most two reloads, and nothing marked or stopped.
+  -- Anything else is the tile guard's or Hyprland's: no setup would do
+  -- better, so it's only said, once for these devices and this difference,
+  -- and never reloads.
   local open_setups = { lib.repo .. "/bin/bento", "preferences", "setups" }
   local function finish(diffs, empty, mine, waiting)
     local now_t = os.time()
@@ -1376,6 +1510,8 @@ return function(lib, S)
       state.check = { load = state.load, state = "passed", at = now_t, detail = "" }
       state.retry = nil
       state.guard_notice = nil
+      -- A setup that works here takes over from an arrangement.
+      if active then state.arranged = nil end
       write_state()
       if changed then
         local labels = setup_labels()
@@ -1385,11 +1521,20 @@ return function(lib, S)
     else
       local detail = table.concat(diffs, "; ")
       local blame = active ~= nil and mine
+      local unarranged = not active and layout ~= nil and mine
       state.check = { load = state.load, state = "failed", at = now_t, detail = detail }
       -- Kept through later loads: the retry below starts a new load at once,
       -- and bin/bento-setup must still see that this one failed.
-      state.last_failure = { load = state.load, id = blame and active.id or json.null, detail = detail, at = now_t }
-      if blame then
+      state.last_failure = { load = state.load, id = blame and active.id or json.null, detail = detail, at = now_t,
+        arranged = unarranged or nil }
+      if unarranged then
+        state.arranged = arranged_now and arranged_before or nil
+        local back = state.arranged and "the arrangement before" or "Omarchy's arrangement"
+        local again = reload("check failed")
+        if not again then write_state() end
+        lib.notify("critical", "That arrangement didn't work",
+          detail .. (again and (". Back to " .. back .. ".") or (". The next reload goes back to " .. back .. ".")), open_setups)
+      elseif blame then
         local failed = state.failed
         failed[#failed + 1] = { id = active.id, fingerprint = fp, config = config }
         while #failed > 50 do table.remove(failed, 1) end

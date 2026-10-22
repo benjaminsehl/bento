@@ -2,17 +2,18 @@
 # Setups from the command line (docs/setups.md). At every Hyprland config load
 # hypr/setups.lua picks a setup, checks that the displays came out as asked,
 # and writes what it found to ~/.local/state/bento/setup.json. This reads that
-# file, asks for a setup through setup-request.json, saves setups to
-# ~/.config/bento/setups.json, and reloads Hyprland.
+# file, asks for a setup or an arrangement through setup-request.json, saves
+# setups to ~/.config/bento/setups.json, and reloads Hyprland.
 #
-#   bento setup                  the setups, the one in use, and why
-#   bento setup <name|id>        use it until a display or dock changes
-#   bento setup auto             back to automatic
-#   bento setup pick             choose from Omarchy's menu
-#   bento setup save <name>      save what's connected and how it's arranged; prints the new id
-#   bento setup why              every relevant device, its identity, and how each setup scored
-#   bento setup apply            (for the app) after it wrote setups.json: reload and check, or put the old one back
-#   bento setup status           the state file as JSON, for scripts
+#   bento setup                        the setups, the one in use, and why
+#   bento setup <name|id>              use it until a display or dock changes
+#   bento setup auto                   back to automatic
+#   bento setup pick                   choose from Omarchy's menu
+#   bento setup save <name>            save what's connected and how it's arranged; prints the new id
+#   bento setup arrange DISPLAY=X,Y …  place every lit display (key, connector or label) until a display or dock changes
+#   bento setup why                    every relevant device, its identity, and how each setup scored
+#   bento setup apply                  (for the app) after it wrote setups.json: reload and check, or put the old one back
+#   bento setup status                 the state file as JSON, for scripts
 #
 # Exits 0 when it worked, 1 when it failed or was refused (the reason goes to
 # stderr), and 2 for a usage mistake.
@@ -24,7 +25,7 @@ state_file="$state/setup.json"
 request="$state/setup-request.json"
 sys=${BENTO_SYS:-/sys} # tests point this at a fake tree
 # Words that mean a command, so they can't name a setup (or be an id).
-reserved="auto pick save why apply status help"
+reserved="auto pick save arrange why apply status help"
 
 die() { echo "$*" >&2; exit 1; }
 usage() { sed -n 's/^#   \(bento setup\)/\1/p' "$(readlink -f "${BASH_SOURCE[0]}")"; }
@@ -65,8 +66,10 @@ saved_setups() {
 # chosen. `rows` are the setups to show and choose from: setups.json's, named
 # as it names them now, with what the last load found about each (one it
 # hasn't seen yet has "checked": false); the state's own list when setups.json
-# can't be read. `failed_since` is any failed check since a load, `failed_of`
-# that setup's, and `verdict` judges a write to setups.json (check_or_restore).
+# can't be read. `arranged` says the displays are where `bento setup arrange`
+# (or a drag in the app) put them, which only counts while no setup is in use.
+# `failed_since` is any failed check since a load, `failed_of` that setup's,
+# and `verdict` judges a write to setups.json (check_or_restore).
 jq_lib='
   def table: (map(length) | max // 0) as $n
     | (reduce .[] as $row ([]; [range(0; $n) as $i | [.[$i] // 0, ($row[$i] // "" | length)] | max])) as $width
@@ -74,6 +77,7 @@ jq_lib='
     | join("") | sub(" +$"; "");
   def outside: (.displays // []) | map(objects | select(.display != "internal") | .label // .display | tostring) | join(", ");
   def in_use: "in use (" + (if .reason == "hand" then "by hand" else "automatic" end) + ")";
+  def arranged: (.active | not) and (.arranged | type) == "object";
   def rows: (.setups // []) as $checked
     | if $saved == null then [$checked[] | objects | . + {name: (.name // .id | tostring)}]
       else [$saved[] | .id as $id
@@ -99,6 +103,7 @@ jq_lib='
       elif $f == null then ["ok", 0, "no", ""]
       elif $f.id != null and IN($f.id; $ids[]) then ["mine", 0, "no", $detail]
       elif $f.load < .load and .check.load == .load and .check.state != "pending" then ["ok", 0, "no", ""]
+      elif $f.id == null and $f.arranged == true then ["arranged", 0, "no", $detail]
       elif $f.id == null then ["guard", 0, "no", $detail]
       else ["other", $f.load, if $f.load < .load or (.stopped == null and (.retry | type) == "string") then "yes" else "no" end,
             (name_of($f.id) // $f.id | tostring) + " failed its check: " + $detail] end
@@ -180,12 +185,13 @@ wait_check() {
   return 1
 }
 
-# Ask setups.lua for a setup by hand ({"hand": "<id>"}) or for automatic
-# ({"hand": null}). It reads and deletes the request at the next load.
-ask() { # JSON value
+# Ask setups.lua for a setup by hand ({"hand": "<id>"}), for automatic
+# ({"hand": null}), or for an arrangement ({"arrange": {"displays": [...]}}).
+# It reads and deletes the request at the next load.
+ask() { # request JSON
   mark || die "$failure"
   mkdir -p "$state"
-  jq -n --argjson hand "$1" '{hand: $hand}' > "$request.tmp.$$"
+  jq . <<<"$1" > "$request.tmp.$$"
   mv "$request.tmp.$$" "$request"
   asked=yes
 }
@@ -198,7 +204,9 @@ send() {
   die "$failure"
 }
 
-# bento setup: one row per setup, with why it is or isn't in use.
+# bento setup: one row per setup, with why it is or isn't in use. A refused
+# arrangement isn't about setups.json, so it gets a line of its own, as in the
+# pane (SetupsData.problemLine), not a place under "Problems in setups.json:".
 list() {
   state_jq '
     . as $s
@@ -208,12 +216,15 @@ list() {
           else [.name, .note // ""] end] as $rows
     | [if $rows == [] then "No setups yet. Save what is connected, and how it is arranged, with: bento setup save <name>"
        elif .active == null then
-         if .stopped then "None in use: even the fallback failed its check with these devices."
+         if arranged then "Automatic · arranged by hand"
+         elif .stopped then "None in use: even the fallback failed its check with these devices."
          else "None in use: no setup matches what is connected." end
        else empty end,
        (.hand_error // empty | "Your last choice was refused: " + .),
        (if .check.load == .load and .check.state == "failed" then "Last check failed: " + (.check.detail // "") else empty end),
-       (if (.problems // []) != [] then "Problems in setups.json:", (.problems[] | "  " + tostring) else empty end)] as $notes
+       (.problems // [] | map(tostring) | map(select(startswith("That arrangement ")))[]),
+       (.problems // [] | map(tostring) | map(select(startswith("That arrangement ") | not))
+        | if . != [] then "Problems in setups.json:", (.[] | "  " + .) else empty end)] as $notes
     | ($rows | table), (if $rows != [] and $notes != [] then "" else empty end), $notes[]
   '
 }
@@ -257,6 +268,7 @@ why() {
        ["Last check", (.check // null | if . == null then "none yet"
           else "\(.state) (load \(.load))" + (if (.detail // "") != "" then ": " + .detail else "" end) end)],
        (.hand_error // empty | ["Refused", .]),
+       (if arranged then ["Automatic", "arranged by hand"] else empty end),
        (.stopped // empty | ["Stopped", "even the fallback failed its check with these devices"]),
        ((.problems // []) | to_entries[] | [if .key == 0 then "Problems" else "" end, .value | tostring])] as $facts
     | "Connected",
@@ -294,7 +306,7 @@ choose() { # name or id
 # another one that failed meanwhile.
 hand() { # id name
   setup_lock
-  ask "$(jq -n --arg id "$1" '$id')"
+  ask "$(jq -n --arg id "$1" '{hand: $id}')"
   send
   local result detail
   result=$(state_jq '
@@ -315,7 +327,7 @@ hand() { # id name
 automatic() {
   need_state
   setup_lock
-  ask null
+  ask '{"hand": null}'
   send
   local detail
   detail=$(state_jq 'failed_since($before) // empty' --argjson before "$before_load")
@@ -339,7 +351,8 @@ pick() {
     answers+=("$name${note:+$'\t'$note}") # what the menu hands back for that row
   done < <(state_jq '
     def clean: tostring | gsub("[\t\n]"; " ");
-    ["auto", "Automatic", if .hand then "" elif ((.stopped // "") != "") then "stopped after a failed check"
+    ["auto", "Automatic", if .hand then "" elif arranged then "arranged by hand"
+      elif ((.stopped // "") != "") then "stopped after a failed check"
       elif .active then "now: " + (name_of(.active) // .active) else "nothing matches now" end],
     (rows[] | select(.checked != false and .usable) | [.id, .name, .note // ""])
     | map(clean) | join("\t")')
@@ -431,8 +444,10 @@ restore() { # restore|announce
 # Reload and wait for the check of a write to setups.json that touched the
 # setups in $1 (a JSON list of ids). Only their own failure counts. When
 # another setup failed, setups.lua is already trying again without it, so this
-# waits for that load and judges it. When only the tile guard failed,
-# setups.json has nothing to do with it. Either way it says so on stderr. If
+# waits for that load and judges it. When only the tile guard failed, or the
+# displays arranged by hand (no setup in use, so setups.lua goes back to the
+# arrangement before, or Omarchy's), setups.json has nothing to do with it.
+# Either way it says so on stderr. If
 # one of them failed, or nothing answered, $2 says what becomes of the file:
 # "restore" puts the old one back (this run wrote it), "announce" does too but
 # keeps the new one as setups.json.rejected and says so, "keep" leaves it
@@ -454,6 +469,7 @@ check_or_restore() { # ids, restore|announce|keep
       case $verdict in
         ok) return 0 ;;
         guard) echo "A display didn't come out right: $detail" >&2; return 0 ;;
+        arranged) echo "The arrangement by hand didn't work: $detail" >&2; return 0 ;;
         other)
           if [[ $wait == yes ]] && (( round < 3 )); then
             before_load=$load
@@ -508,21 +524,89 @@ has_edid() { # path
     && (( $(wc -c 2>/dev/null <"$1" || echo 0) >= 128 ))
 }
 
+# Which display shows a picture on which output, so that save and arrange
+# agree. lit_displays($monitors), over the state file, with Hyprland's
+# monitors: `listed` are the outputs Hyprland lists that aren't off,
+# mirrored, or turned off by Bento at the last load (Hyprland may list one all
+# the same); `lit` are those showing a real picture; `placed` is each display
+# Bento knows, with the output that shows it (`m`, or null) and whether any of
+# its outputs is listed. An output that isn't showing a real picture is never
+# a display of its own: 0x0 (a tile coming or going), or 640x480 anywhere but
+# on a plain display Bento knows (what a tiled display's other stream shows
+# when the dock carries one, and DisplayPort's fallback without an EDID). A
+# tiled display is shown by its left tile when that shows a picture.
+#
+# entry($s) is one of those placed displays that shows a picture, as save
+# writes it into setups.json; arrange sends the same, at the place asked for.
+lit_jq='
+  def lit_displays($monitors):
+    . as $s
+    # The output of a display that is not tiled: its first connector (the
+    # rest are phantoms). One with no native size is a tiled display that
+    # setups.lua could not size yet (its left tile has no modes): none of
+    # its connectors is a picture at 640x480.
+    | [($s.devices.displays // [])[] | objects | select(.tiled != true and (.native | type) == "array")
+        | (.connectors // [])[0] | strings] as $plain
+    | def picture: (.width // 0) > 0 and (.height // 0) > 0 and (.scale // 0) > 0
+        and ([.width, .height] != [640, 480] or IN(.name; $plain[]));
+    [($s.requested.monitors // [])[]? | objects | select(.disabled == true) | .output] as $off
+    | [$monitors[] | objects
+        | select((.disabled | not) and (.mirrorOf // "none") == "none" and (IN(.name; $off[]) | not))] as $listed
+    | [$listed[] | select(picture)] as $lit
+    | {listed: $listed, lit: $lit,
+       placed: [($s.devices.displays // [])[] | objects | . as $d | (.connectors // []) as $outputs
+         | {d: ., m: ([$lit[] | select(IN(.name; $outputs[]))] | sort_by(.name != $d.left) | .[0]),
+            listed: any($listed[]; IN(.name; $outputs[]))}]};
+  # A tiled display is one entry, at its left tile. scale is relative to the
+  # panel, and left out when it is what Omarchy would give anyway:
+  # laptop_scale for the laptop, external_scale (the catch-all) for the rest.
+  # mode only for a plain external display: setups.lua ignores it on the
+  # laptop, and picks a tiled display mode itself.
+  def entry($s):
+    def snap: . * 20 | round / 20;
+    $s.laptop_scale as $laptop
+    | ($s.external_scale // $s.laptop_scale) as $external
+    | .d as $d | .m as $m
+    | (if ($m.transform // 0) % 2 == 1 then [$m.height, $m.width] else [$m.width, $m.height] end) as $pixels
+    | ($d.native[0]? // 0 | if . > 0 then . else $m.width end) as $native_width
+    | ($m.scale * $native_width / $m.width | snap) as $relative
+    | (if $d.internal then $laptop == "auto"
+       elif ($external | type) == "number" then ($relative - $external | fabs) > 0.001
+       elif $d.tiled then ($relative - ([1, ($native_width / 2560 * 4 | round) / 4] | max) | fabs) > 0.001
+       else true end) as $keep
+    | {display: (if $d.internal then "internal" else $d.display end),
+       label: ($d.label // $m.description // $m.name),
+       native: $d.native,
+       size: [($pixels[0] / $m.scale | round), ($pixels[1] / $m.scale | round)],
+       tiles: (if $d.tiled then "single" else null end),
+       scale: (if $keep then $relative else null end),
+       at: [$m.x, $m.y],
+       transform: ($m.transform // 0),
+       mode: (if $d.internal or $d.tiled then null
+              else "\($m.width)x\($m.height)"
+                + (if ($m.refreshRate // 0) > 0 then "@\($m.refreshRate * 1000 | round / 1000)" else "" end) end),
+       primary: (if $m.focused then true else null end)}
+    | with_entries(select(.value != null));
+'
+
+# Hyprland's monitors as a JSON list, or it dies.
+monitors_now() {
+  local monitors
+  monitors=$(hyprctl monitors -j 2>/dev/null 8>&-) && jq -e 'type == "array"' <<<"$monitors" >/dev/null 2>&1 \
+    || die "Hyprland didn't answer"
+  printf '%s\n' "$monitors"
+}
+
 # bento setup save <name>: one entry per lit display, from Hyprland's monitors
 # (position, scale, mode, rotation) and the state file (which display is on
 # which connector, tiles, panel sizes, Omarchy's scale). It's identified by
 # the external displays connected, plus the Thunderbolt devices when another
 # setup has the very same displays.
 #
-# An output that isn't showing a real picture is never a display of its own:
-# 0x0 (a tile coming or going), 640x480 anywhere but on a plain display Bento
-# knows (what a tiled display's other stream shows when the dock carries one,
-# and DisplayPort's fallback without an EDID), or one Bento turned off at the
-# last load (Hyprland may list it all the same). A tiled display is one entry,
-# from its left tile when that shows a picture. A known display with no
-# picture at all can't be placed, so save waits for it. A lit display without
-# an EDID Bento can read can't be recognised, so it's left out, with a
-# warning.
+# A tiled display is one entry, from its left tile (lit_displays says which
+# output shows what). A known display with no picture at all can't be placed,
+# so save waits for it. A lit display without an EDID Bento can read can't be
+# recognised, so it's left out, with a warning.
 save() { # name
   local name=$1 file monitors phys=() connected=() blind=() f c id built ids
   need_state
@@ -532,8 +616,7 @@ save() { # name
       || die "$config isn't a setups file this Bento can read; fix or move it first"
   fi
   file=$(setups_file)
-  monitors=$(hyprctl monitors -j 2>/dev/null 8>&-) && jq -e 'type == "array"' <<<"$monitors" >/dev/null 2>&1 \
-    || die "Hyprland didn't answer"
+  monitors=$(monitors_now) || exit 1
 
   # Connectors the kernel has, the ones with a display plugged in, and those
   # whose display gives no EDID that setups.lua could read.
@@ -550,34 +633,17 @@ save() { # name
   id=$(new_id "$ids")
   built=$(jq --arg name "$name" --arg id "$id" --argjson file "$file" --argjson monitors "$monitors" \
     --argjson phys "$(json_list "${phys[@]}")" --argjson connected "$(json_list "${connected[@]}")" \
-    --argjson blind "$(json_list "${blind[@]}")" '
-    def snap: . * 20 | round / 20;
+    --argjson blind "$(json_list "${blind[@]}")" "$lit_jq"'
     def identity: if has("display") then "display:" + .display elif has("thunderbolt") then "tb:" + .thunderbolt
       elif has("usb") then "usb:" + .usb else empty end;
     def they($list; $one; $more): if ($list | length) == 1 then $one else $more end;
     . as $s
-    # The output of a display that is not tiled: its first connector (the
-    # rest are phantoms). One with no native size is a tiled display that
-    # setups.lua could not size yet (its left tile has no modes): none of
-    # its connectors is a picture at 640x480.
-    | [($s.devices.displays // [])[] | objects | select(.tiled != true and (.native | type) == "array")
-        | (.connectors // [])[0] | strings] as $plain
-    | def picture: (.width // 0) > 0 and (.height // 0) > 0 and (.scale // 0) > 0
-        and ([.width, .height] != [640, 480] or IN(.name; $plain[]));
-    ($file.setups // [] | map(objects)) as $others
-    | [($s.requested.monitors // [])[]? | objects | select(.disabled == true) | .output] as $off
-    | [$monitors[] | objects
-        | select((.disabled | not) and (.mirrorOf // "none") == "none" and (IN(.name; $off[]) | not))] as $listed
-    | [$listed[] | select(picture)] as $lit
+    | lit_displays($monitors) as {$listed, $lit, $placed}
+    | ($file.setups // [] | map(objects)) as $others
     | [($s.devices.displays // [])[] | (.connectors // [])[]] as $known
     | [$lit[] | select((IN(.name; $known[]) | not) and IN(.name; $phys[])) | .name] as $unlisted
     | [$unlisted[] | select(IN($blind[]))] as $unnamed
     | [$unlisted[] | select(IN($blind[]) | not)] as $unknown
-    # Each display with the output that shows it, if any: the left tile when
-    # it shows a picture.
-    | [($s.devices.displays // [])[] | objects | . as $d | (.connectors // []) as $outputs
-        | {d: ., m: ([$lit[] | select(IN(.name; $outputs[]))] | sort_by(.name != $d.left) | .[0]),
-           listed: any($listed[]; IN(.name; $outputs[]))}] as $placed
     | [$placed[] | select(.m == null and .listed) | .d.label // .d.display] as $dark
     | if any($others[]; (.name // "" | ascii_downcase) == ($name | ascii_downcase)) then
         {error: "There is already a setup called \u0027\($name)\u0027"}
@@ -586,36 +652,8 @@ save() { # name
       elif $dark != [] then
         {error: "\($dark | join(", ")) \(they($dark; "isn\u0027t"; "aren\u0027t")) showing a picture yet, so \(they($dark; "it"; "they")) can\u0027t be saved; try again when \(they($dark; "it is"; "they are"))"}
       else
-        # One entry per display that is lit. A tiled display is one entry, at
-        # its left tile. scale is relative to the panel, and left out when it
-        # is what Omarchy would give anyway: laptop_scale for the laptop,
-        # external_scale (the catch-all) for the rest. mode only for a plain
-        # external display: setups.lua ignores it on the laptop, and picks a
-        # tiled display mode itself.
-        $s.laptop_scale as $laptop
-        | ($s.external_scale // $s.laptop_scale) as $external
-        | [$placed[] | select(.m != null) | .d as $d | .m as $m
-            | (if ($m.transform // 0) % 2 == 1 then [$m.height, $m.width] else [$m.width, $m.height] end) as $pixels
-            | ($d.native[0]? // 0 | if . > 0 then . else $m.width end) as $native_width
-            | ($m.scale * $native_width / $m.width | snap) as $relative
-            | (if $d.internal then $laptop == "auto"
-               elif ($external | type) == "number" then ($relative - $external | fabs) > 0.001
-               elif $d.tiled then ($relative - ([1, ($native_width / 2560 * 4 | round) / 4] | max) | fabs) > 0.001
-               else true end) as $keep
-            | {display: (if $d.internal then "internal" else $d.display end),
-               label: ($d.label // $m.description // $m.name),
-               native: $d.native,
-               size: [($pixels[0] / $m.scale | round), ($pixels[1] / $m.scale | round)],
-               tiles: (if $d.tiled then "single" else null end),
-               scale: (if $keep then $relative else null end),
-               at: [$m.x, $m.y],
-               transform: ($m.transform // 0),
-               mode: (if $d.internal or $d.tiled then null
-                      else "\($m.width)x\($m.height)"
-                        + (if ($m.refreshRate // 0) > 0 then "@\($m.refreshRate * 1000 | round / 1000)" else "" end) end),
-               primary: (if $m.focused then true else null end)}
-            | with_entries(select(.value != null))]
-        | sort_by(.at) as $displays
+        # One entry per display that is lit.
+        [$placed[] | select(.m != null) | entry($s)] | sort_by(.at) as $displays
         # Identified by every external display that is connected.
         | [($s.devices.displays // [])[]
             | select((.internal | not) and any((.connectors // [])[]; IN($lit[].name) or IN($connected[])))
@@ -646,6 +684,77 @@ save() { # name
   echo "$id"
   state_jq '"Saved \($name) · " + if .active == $id then "in use"
     elif .active then "in use: " + (name_of(.active) // .active) else "no setup in use" end' --arg id "$id" --arg name "$name" >&2
+}
+
+# bento setup arrange DISPLAY=X,Y …: put the displays there until a display or
+# dock changes, as a setup chosen by hand holds. Only while no setup is in
+# use: a setup in use says where its displays go, and the app moves them in it
+# instead. Every lit display is named once, by its key ("internal" for the
+# laptop), a connector or its label, in any case, with the top left corner it
+# gets in Hyprland's layout. What's sent is a setup with no name: each lit
+# display as save would write it, at its new place and with no primary, so
+# the displays only move. setups.lua keeps the arrangement in the state file
+# (`arranged`) and places the displays from it at every load, as it places a
+# setup's. When its check fails, setups.lua goes back to what it had, says so
+# in last_failure (`arranged`), and reloads; that reload isn't waited for.
+# Says nothing on stderr when it worked: the app takes anything there for a
+# warning.
+arrange() { # DISPLAY=X,Y ...
+  local in_use monitors built sent result detail
+  need_state
+  setup_lock
+  in_use=$(state_jq 'if .active then name_of(.active) // .active | tostring else "" end')
+  [[ -z $in_use ]] || die "$in_use is in use · drag it in Preferences"
+  monitors=$(monitors_now) || exit 1
+  # Each argument's display, found by key or connector, else by label.
+  built=$(jq --argjson monitors "$monitors" --argjson asked "$(json_list "$@")" "$lit_jq"'
+    def they($list; $one; $more): if ($list | length) == 1 then $one else $more end;
+    . as $s
+    | [lit_displays($monitors).placed[] | .d as $d
+      | {display: (if $d.internal then "internal" else $d.display end), label: ($d.label // $d.display | tostring),
+         connectors: ($d.connectors // [] | map(strings)), lit: (.m != null),
+         entry: (if .m != null then entry($s) else null end)}] as $known
+    | [$asked[] | split("=") as [$name, $at]
+        | ($name | sub("^ +"; "") | sub(" +$"; "")) as $name | ($name | ascii_downcase) as $n
+        | {name: $name, at: ($at | split(",") | map(tonumber | if . == 0 then 0 else . end)),
+           found: ([$known[] | select((.display | ascii_downcase) == $n or any(.connectors[]; ascii_downcase == $n))]
+             | if . == [] then [$known[] | select((.label | ascii_downcase) == $n)] else . end)}] as $places
+    | ([$places[] | select(.found == []) | .name][0]) as $unknown
+    | ([$places[] | select(.found | length > 1) | .name][0]) as $vague
+    | [$places[] | .found[0] // empty] as $named
+    | ([$named[] | select(.lit | not) | .label][0]) as $dark
+    | ([$named | group_by(.display)[] | select(length > 1) | .[0].label][0]) as $twice
+    | [$known[] | select(.lit and (IN(.display; $named[].display) | not)) | .label] as $missing
+    | if $unknown != null then {error: "No display called \u0027\($unknown)\u0027"}
+      elif $vague != null then {error: "More than one display is called \u0027\($vague)\u0027; name it by its connector"}
+      elif $dark != null then {error: "\($dark) isn\u0027t lit, so it can\u0027t be placed"}
+      elif $twice != null then {error: "Say where \($twice) goes only once"}
+      elif $missing != [] then {error: "Say where \($missing | join(", ")) \(they($missing; "goes"; "go")) too"}
+      else {displays: [$places[] | .found[0].entry + {at} | del(.primary)]} end' "$state_file") \
+    || die "Bento's state file can't be read: $state_file"
+  [[ $(jq -r '.error // empty' <<<"$built") == "" ]] || die "$(jq -r '.error' <<<"$built")"
+  sent=$(jq -c '[.displays[] | {display, at}]' <<<"$built")
+  ask "$(jq -c '{arrange: {displays: .displays}}' <<<"$built")"
+  send
+  # The load that took the request decides: its own check failing, a setup
+  # chosen after all, or the arrangement not kept as it was sent (when
+  # setups.lua refused it, that load's problems say why).
+  result=$(state_jq '
+    def clean: tostring | gsub("[\t\n]"; " ");
+    def why: ltrimstr("That arrangement can\u0027t be used: ");
+    if (.last_failure | type) == "object" and .last_failure.arranged == true and .last_failure.load == .request_load then
+      "failed\t" + (.last_failure.detail // "" | clean | if . == "" then "The check failed" else . end)
+    elif .active then "active\t" + (name_of(.active) // .active | clean)
+    elif ([.arranged | objects | .displays | arrays | .[] | objects | {display, at}] | sort_by(.display))
+      == ($sent | sort_by(.display)) then "ok\t"
+    else "lost\t" + ([(.problems // [])[]? | strings | select(why != .) | why][0] // "" | clean) end' --argjson sent "$sent") || result=
+  detail=${result#*$'\t'}
+  case ${result%%$'\t'*} in
+    ok) echo "Arranged · until a display or dock changes" ;;
+    failed) die "That arrangement didn't work · $detail" ;;
+    active) die "$detail is in use · drag it in Preferences" ;;
+    *) die "Bento couldn't keep that arrangement${detail:+ · $detail}" ;;
+  esac
 }
 
 # Four random characters that no setup uses, and that aren't a command.
@@ -681,6 +790,14 @@ case ${1-} in
     [[ " $reserved " != *" ${name,,} "* ]] || die "'$name' is a command, so it can't name a setup"
     [[ $name != -* ]] || die "A name can't start with a dash"
     save "$name"
+    ;;
+  arrange)
+    shift
+    (( $# > 0 )) || usage_error
+    # DISPLAY=X,Y, never an option. Hyprland reads positions as 32-bit; nine
+    # digits is plenty.
+    for a in "$@"; do [[ $a =~ ^[^-=[:cntrl:]][^=[:cntrl:]]*=-?[0-9]{1,9},-?[0-9]{1,9}$ ]] || usage_error; done
+    arrange "$@"
     ;;
   help|-h|--help) usage ;;
   -*) usage_error ;;

@@ -50,7 +50,7 @@ function nameTaken(file, name, exceptId) {
 }
 
 // bento-setup's own words, which can't name a setup.
-var commands = ["auto", "pick", "save", "why", "apply", "status", "help"]
+var commands = ["auto", "pick", "save", "arrange", "why", "apply", "status", "help"]
 
 // Why a name won't do, or "" when it's fine.
 function nameProblem(file, name, exceptId) {
@@ -87,6 +87,11 @@ function nameOf(file, state, id) {
 
 // The setups menu in the bar: Automatic, then each setup Hyprland knows,
 // named as setups.json names them now (a rename shows before the next load).
+// `arranged`: the displays are where you dragged them, which only counts
+// while no setup is in use (a setup places them itself). `automaticChanges`:
+// choosing Automatic does something, as `bento setup auto` would: it lets go
+// of a setup held by hand, or of an arrangement (Automatic is still the
+// choice then, but isn't placing the displays).
 function menuModel(state, file, fileReadable) {
   var hand = isObject(state) && isObject(state.hand) ? state.hand.id : null
   var active = isObject(state) ? state.active : null
@@ -104,15 +109,19 @@ function menuModel(state, file, fileReadable) {
     }
   })
   var stopped = isObject(state) && typeof state.stopped === "string" && state.stopped !== ""
-  return { automatic: !hand, now: active ? nameOf(file, state, active) : "", stopped: stopped, items: items }
+  var arranged = !active && isObject(state) && isObject(state.arranged)
+  return { automatic: !hand, automaticChanges: !!hand || arranged, now: active ? nameOf(file, state, active) : "",
+    stopped: stopped, arranged: arranged, items: items }
 }
 
 // What the Automatic choice says, in the menu and the pane: what it uses
 // now, or why nothing. Nothing while a setup is held by hand, since then
-// Automatic isn't choosing. A stop comes first: the setup still in use is
+// Automatic isn't choosing. An arrangement by hand is what's on the screens,
+// even after a stop. Otherwise a stop comes first: the setup still in use is
 // the one that just failed its check.
 function automaticNote(menu) {
   if (!menu.automatic) return ""
+  if (menu.arranged) return "arranged by hand"
   if (menu.stopped) return "stopped after a failed check"
   return menu.now ? "now: " + menu.now : "nothing matches now"
 }
@@ -123,6 +132,15 @@ function menuNote(item) {
   if (item.failed) return item.note
   if (item.active) return "in use"
   return item.usable ? "" : item.note
+}
+
+// One of the state file's problems, as the pane lists it. Most are about
+// setups.json, and get its name when they don't start with it. An
+// arrangement that can't be used isn't about setups.json, so it shows as
+// setups.lua wrote it.
+function problemLine(problem) {
+  var p = String(problem)
+  return /^(setups\.json|That arrangement )/.test(p) ? p : "setups.json: " + p
 }
 
 // The Setups pane's list: every setup in setups.json, in file order, with
@@ -326,6 +344,54 @@ function requestedMode(state, key) {
   return null
 }
 
+// The displays where Hyprland has them now, as a setup to draw while none
+// is in use: what `bento setup save` would save. `monitors` is Hyprland's
+// list (`hyprctl monitors -j`, or each monitor's lastIpcObject). An output
+// counts as save counts it: not disabled, not a mirror, not one the tile
+// guard turned off, and showing a picture (not 0x0, and not 640x480 but on
+// a plain display). One entry per display Bento shows (see
+// connectedDisplays), from its left tile when that shows a picture, at its
+// logical size, swapped when rotated. They keep the state's order, so a box
+// keeps its place when the arrangement changes. `arranging`, the places
+// arrangeDrop gave, stands in for positions Hyprland hasn't reported yet.
+// null when nothing is lit.
+function liveSetup(monitors, state, arranging) {
+  if (!isObject(state)) return null
+  var devices = isObject(state.devices) ? state.devices : {}
+  var off = {}, plain = {}, moved = {}
+  list(isObject(state.requested) ? state.requested.monitors : null).forEach(function(r) {
+    if (isObject(r) && r.disabled === true && typeof r.output === "string") off[r.output] = true
+  })
+  list(devices.displays).forEach(function(d) {
+    var first = isObject(d) ? list(d.connectors)[0] : null
+    if (typeof first === "string" && d.tiled !== true && Array.isArray(d.native)) plain[first] = true
+  })
+  list(arranging).forEach(function(p) { if (isObject(p) && Array.isArray(p.at) && p.at.length === 2) moved[p.display] = p.at })
+  var lit = list(monitors).filter(function(m) {
+    if (!isObject(m) || typeof m.name !== "string" || m.disabled || (m.mirrorOf || "none") !== "none" || off[m.name]) return false
+    var w = Number(m.width), h = Number(m.height)
+    return w > 0 && h > 0 && Number(m.scale) > 0 && (w !== 640 || h !== 480 || plain[m.name] === true)
+  })
+  var displays = []
+  connectedDisplays(state).forEach(function(d) {
+    var outputs = list(d.connectors)
+    var mine = lit.filter(function(m) { return outputs.indexOf(m.name) !== -1 })
+    var m = mine.filter(function(o) { return o.name === d.left })[0] || mine[0]
+    if (!m) return
+    var internal = d.internal === true || d.display === "internal"
+    var key = internal ? "internal" : d.display
+    var w = Math.round(Number(m.width) / Number(m.scale)), h = Math.round(Number(m.height) / Number(m.scale))
+    var transform = Number(m.transform) || 0
+    var entry = { display: key, label: String(d.label || m.description || m.name), internal: internal, output: m.name }
+    if (isPair(d.native)) entry.native = d.native.slice()
+    entry.size = transform % 2 === 1 ? [h, w] : [w, h]
+    entry.at = moved[key] ? [toInt(moved[key][0]), toInt(moved[key][1])] : [toInt(m.x), toInt(m.y)]
+    entry.transform = transform
+    displays.push(entry)
+  })
+  return displays.length ? { id: "", live: true, displays: displays } : null
+}
+
 function rect(entry, omarchy) {
   var size = logicalSize(entry, omarchy)
   var at = entry && Array.isArray(entry.at) && entry.at.length === 2 ? entry.at : [0, 0]
@@ -403,6 +469,272 @@ function setPrimary(setup, index) {
     else delete displays[i].primary
   }
   return next
+}
+
+// ------------------------------------------------------------- arranging
+
+// Dragging a display in the drawing. Everything is in Hyprland's logical
+// pixels, in whole numbers: a rect is { x, y, w, h } (see rect), and may
+// carry its display key. A tiled display is one rect, and a display that
+// isn't connected is its outline; both are neighbours like any other.
+
+function toInt(v) { return Math.round(Number(v)) || 0 }
+
+function wholeRect(r) {
+  var out = { x: toInt(r && r.x), y: toInt(r && r.y), w: Math.max(1, toInt(r && r.w)), h: Math.max(1, toInt(r && r.h)) }
+  if (r && r.display !== undefined) out.display = r.display
+  return out
+}
+
+// The drawing's rects, each with its display's key, for arrangeDrop.
+function displayRects(entries, omarchy) {
+  return list(entries).map(function(e) {
+    var r = rect(e, omarchy)
+    r.display = isObject(e) ? e.display : undefined
+    return r
+  })
+}
+
+// How near counts as lined up, in logical pixels: `px` on screen at the
+// drawing's factor, but at most a quarter of the box's shorter side, so a
+// small display can still sit off-centre.
+function snapThreshold(r, factor, px) {
+  var box = wholeRect(r)
+  return Math.max(1, Math.min(factor > 0 ? px / factor : Infinity, Math.min(box.w, box.h) / 4))
+}
+
+// The ways a box can sit flush against a neighbour, in the order a tie goes.
+var sides = ["right", "left", "below", "above"]
+
+// Where along [lo, hi] a box can slide, without the open stretches in
+// `blocked`: the stretches as [from, to], ends included (touching is fine).
+function freeStretches(lo, hi, blocked) {
+  var free = lo <= hi ? [[lo, hi]] : []
+  blocked.forEach(function(b) {
+    var next = []
+    free.forEach(function(f) {
+      if (f[0] <= Math.min(f[1], b[0])) next.push([f[0], Math.min(f[1], b[0])])
+      if (Math.max(f[0], b[1]) <= f[1]) next.push([Math.max(f[0], b[1]), f[1]])
+    })
+    free = next
+  })
+  return free
+}
+
+function inStretches(free, v) {
+  return free.some(function(f) { return f[0] <= v && v <= f[1] })
+}
+
+// The free value nearest v, in whole pixels (the ends are whole).
+function nearestIn(free, v) {
+  var best = null
+  free.forEach(function(f) {
+    var c = Math.min(f[1], Math.max(f[0], v))
+    if (best === null || Math.abs(c - v) < Math.abs(best - v)) best = c
+  })
+  return toInt(best)
+}
+
+// One side of rect `a` for a box of `w` x `h`: the edge it sits flush on
+// (`fixed`, x for right and left, y for below and above), and the range it
+// slides along the other axis while sharing at least a quarter of the
+// shorter edge, so the pointer can cross and never meets a bare corner.
+function flush(a, side, w, h) {
+  var across = side === "right" || side === "left"
+  var len = across ? h : w, start = across ? a.y : a.x, alen = across ? a.h : a.w
+  var contact = Math.ceil(Math.min(len, alen) / 4)
+  return {
+    across: across,
+    fixed: side === "right" ? a.x + a.w : side === "left" ? a.x - w : side === "below" ? a.y + a.h : a.y - h,
+    lo: start - len + contact, hi: start + alen - contact,
+    start: start, alen: alen, len: len
+  }
+}
+
+// How far rect `r`, moved by `shift` on the fixed axis, can't slide along
+// the other without overlapping rect `m`: an open stretch, as touching is
+// fine. null when they don't overlap on the fixed axis.
+function blocking(r, m, across, shift) {
+  var rf = (across ? r.x : r.y) + shift, rl = across ? r.w : r.h
+  var mf = across ? m.x : m.y, ml = across ? m.w : m.h
+  if (!(rf < mf + ml && mf < rf + rl)) return null
+  var rs = across ? r.y : r.x, rlen = across ? r.h : r.w
+  var ms = across ? m.y : m.x, mlen = across ? m.h : m.w
+  return [ms - rlen - rs, ms + mlen - rs]
+}
+
+// Where rect k lands when dropped with its top left at (x, y): flush
+// against the side of another rect nearest that point, never overlapping
+// any rect (touching is fine). Along the edge it lines up with the
+// neighbour's start, centre or end when one is within T, else it stays
+// where it was dropped, as far as contact and the other rects allow.
+// { x, y, side, neighbour }, the nearest of every neighbour's sides (a tie
+// goes right, left, below, above, then the neighbour listed first), or null
+// when there is no side to go to (a display on its own).
+function snapOne(rects, k, x, y, T) {
+  var all = list(rects).map(wholeRect)
+  var r = all[k]
+  x = Number(x); y = Number(y); T = Number(T) > 0 ? Number(T) : 0
+  if (!r || !isFinite(x) || !isFinite(y)) return null
+  var best = null
+  sides.forEach(function(side) {
+    all.forEach(function(a, j) {
+      if (j === k) return
+      var f = flush(a, side, r.w, r.h)
+      var blocked = []
+      all.forEach(function(m, i) {
+        if (i === k) return
+        var b = blocking({ x: 0, y: 0, w: r.w, h: r.h }, m, f.across, f.fixed)
+        if (b) blocked.push(b)
+      })
+      var free = freeStretches(f.lo, f.hi, blocked)
+      if (!free.length) return
+      var want = f.across ? y : x
+      var slide = null
+      var marks = [f.start, Math.round(f.start + (f.alen - f.len) / 2), f.start + f.alen - f.len]
+      marks.forEach(function(v) {
+        if (Math.abs(want - v) <= T && inStretches(free, v) && (slide === null || Math.abs(want - v) < Math.abs(want - slide))) slide = v
+      })
+      if (slide === null) slide = nearestIn(free, want)
+      var at = f.across ? { x: f.fixed, y: toInt(slide) } : { x: toInt(slide), y: f.fixed }
+      var d = Math.sqrt((at.x - x) * (at.x - x) + (at.y - y) * (at.y - y))
+      if (best === null || d < best.d - 1e-9) best = { x: at.x, y: at.y, side: side, neighbour: j, d: d }
+    })
+  })
+  return best ? { x: best.x, y: best.y, side: best.side, neighbour: best.neighbour } : null
+}
+
+// Do two rects touch: an edge within 1 px of the other's (fractional
+// scales round), sharing some of its length.
+function touching(a, b) {
+  var sharedX = Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x)
+  var sharedY = Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y)
+  return (sharedY > 0 && (Math.abs(a.x + a.w - b.x) <= 1 || Math.abs(b.x + b.w - a.x) <= 1))
+    || (sharedX > 0 && (Math.abs(a.y + a.h - b.y) <= 1 || Math.abs(b.y + b.h - a.y) <= 1))
+}
+
+// The rects in touching groups, as lists of indexes.
+function groups(all) {
+  var seen = {}, out = []
+  all.forEach(function(r, i) {
+    if (seen[i]) return
+    var group = [i], next = 0
+    seen[i] = true
+    while (next < group.length) {
+      var a = all[group[next++]]
+      all.forEach(function(b, j) { if (!seen[j] && touching(a, b)) { seen[j] = true; group.push(j) } })
+    }
+    out.push(group.sort(function(p, q) { return p - q }))
+  })
+  return out
+}
+
+function bounds(all, group) {
+  var b = { x: Infinity, y: Infinity, r: -Infinity, b: -Infinity }
+  group.forEach(function(i) {
+    var r = all[i]
+    b.x = Math.min(b.x, r.x); b.y = Math.min(b.y, r.y)
+    b.r = Math.max(b.r, r.x + r.w); b.b = Math.max(b.b, r.y + r.h)
+  })
+  return b
+}
+
+function gapBetween(p, q) {
+  var dx = Math.max(0, q.x - p.r, p.x - q.r), dy = Math.max(0, q.y - p.b, p.y - q.b)
+  return Math.sqrt(dx * dx + dy * dy)
+}
+
+// The shortest move that sets a group flush against the anchor's rects, as
+// snapOne sets one rect: a quarter of the shorter edge shared, overlapping
+// none of them, with the same order for a tie. null if there's none.
+function groupMove(all, anchor, group) {
+  var best = null
+  sides.forEach(function(side) {
+    anchor.forEach(function(ai) {
+      group.forEach(function(gi) {
+        var a = all[ai], g = all[gi]
+        var f = flush(a, side, g.w, g.h)
+        var base = f.across ? g.y : g.x
+        var shift = f.fixed - (f.across ? g.x : g.y)
+        var blocked = []
+        group.forEach(function(mi) {
+          anchor.forEach(function(oi) {
+            var b = blocking(all[mi], all[oi], f.across, shift)
+            if (b) blocked.push(b)
+          })
+        })
+        var free = freeStretches(f.lo - base, f.hi - base, blocked)
+        if (!free.length) return
+        var slide = nearestIn(free, 0)
+        var move = f.across ? { dx: shift, dy: slide } : { dx: slide, dy: shift }
+        var d = Math.sqrt(move.dx * move.dx + move.dy * move.dy)
+        if (best === null || d < best.d - 1e-9) best = { dx: move.dx, dy: move.dy, d: d }
+      })
+    })
+  })
+  return best
+}
+
+// No display left on its own: the rects that no longer touch the group
+// holding rect k move back to it, a touching group at a time and nearest
+// first, each as one block by the shortest move that sets it flush (see
+// groupMove), or else flush right of everything, at the top. Dragging the
+// middle of three away pulls the third over.
+function closeGaps(rects, k) {
+  var all = list(rects).map(wholeRect)
+  var found = groups(all)
+  var anchor = found.filter(function(g) { return g.indexOf(k) !== -1 })[0]
+  if (!anchor) return all
+  var rest = found.filter(function(g) { return g !== anchor })
+  while (rest.length) {
+    var box = bounds(all, anchor), pick = 0
+    for (var i = 1; i < rest.length; i++)
+      if (gapBetween(box, bounds(all, rest[i])) < gapBetween(box, bounds(all, rest[pick])) - 1e-9) pick = i
+    var group = rest.splice(pick, 1)[0]
+    var move = groupMove(all, anchor, group)
+    if (!move) {
+      var own = bounds(all, group)
+      move = { dx: box.r - own.x, dy: box.y - own.y }
+    }
+    group.forEach(function(gi) { all[gi].x += move.dx; all[gi].y += move.dy })
+    anchor = anchor.concat(group)
+  }
+  return all
+}
+
+// The same arrangement with its top left at 0,0, as Hyprland and Omarchy's
+// auto start, so no position is ever negative.
+function normalise(rects) {
+  var all = list(rects).map(wholeRect)
+  if (!all.length) return all
+  var minX = Math.min.apply(null, all.map(function(r) { return r.x }))
+  var minY = Math.min.apply(null, all.map(function(r) { return r.y }))
+  all.forEach(function(r) { r.x -= minX; r.y -= minY })
+  return all
+}
+
+function sameLayout(a, b) {
+  var p = list(a), q = list(b)
+  return p.length === q.length && p.every(function(r, i) {
+    var s = q[i]
+    return isObject(r) && isObject(s) && r.x === s.x && r.y === s.y && r.w === s.w && r.h === s.h
+  })
+}
+
+// Drop rect k with its top left at (x, y): snap it (snapOne), close the
+// gaps it left (closeGaps) and start the whole at 0,0 (normalise). The
+// places, in the rects' order: { display, at: [x, y] } for every rect. null
+// when nothing would change (dropped back where it was, or the same layout
+// moved as a whole) or there's nowhere to go: the box springs back.
+function arrangeDrop(rects, k, x, y, T) {
+  var all = list(rects).map(wholeRect)
+  var to = snapOne(all, k, x, y, T)
+  if (!to) return null
+  var moved = all.map(wholeRect)
+  moved[k].x = to.x; moved[k].y = to.y
+  var after = normalise(closeGaps(moved, k))
+  if (sameLayout(normalise(all), after)) return null
+  return after.map(function(r, i) { return { display: all[i].display, at: [r.x, r.y] } })
 }
 
 // ------------------------------------------------------------ identified by

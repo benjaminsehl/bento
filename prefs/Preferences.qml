@@ -1,5 +1,6 @@
 import QtQuick
 import Quickshell
+import Quickshell.Hyprland
 import qs.Commons
 import qs.Ui
 import ".."
@@ -9,7 +10,8 @@ import "Schema.js" as Schema
 // Changes save and apply right away (bin/bento-apply); if Hyprland rejects
 // one, the previous settings come back and the error shows at the bottom.
 // The Setups pane and the Keyboard pane's Keyboards group edit Bento's setup
-// files instead, through SetupsStore, and report in the same footer.
+// files instead, through SetupsStore, and report in the same footer. While
+// the Setups pane has a display selected, Identify outlines that screen.
 Item {
   id: root
 
@@ -27,6 +29,32 @@ Item {
 
   Settings { id: settings }
   SetupsStore { id: setups; repo: settings.repo; watching: root.opened }
+
+  // Where Hyprland has each display now, for the Setups pane. Quickshell
+  // doesn't hear of every move (a reload), so ask again whenever the state
+  // changes and after every setup change.
+  readonly property var monitors: {
+    var out = [], all = Hyprland.monitors.values
+    for (var i = 0; i < all.length; i++) out.push(all[i].lastIpcObject)
+    return out
+  }
+  Connections {
+    target: setups
+    function onSetupStateChanged() { if (root.opened) Hyprland.refreshMonitors() }
+    function onBusyChanged() { if (root.opened && !setups.busy) Hyprland.refreshMonitors() }
+  }
+
+  // The screen to outline: only while the window is open and in front on the
+  // Setups pane (not left behind on another workspace, under a fullscreen
+  // window), and not while a change moves the displays about.
+  readonly property string identifyOutput: root.opened && keys.Window.active && root.pane === "setups" && !setups.busy && setupsLoader.item
+    ? setupsLoader.item.identifyOutput : ""
+  Loader {
+    id: identify
+    active: root.identifyOutput !== ""
+    source: "Identify.qml"
+  }
+  Binding { target: identify.item; property: "output"; value: root.identifyOutput; when: identify.item !== null }
 
   // Each pane opens at its top, not where the last one was scrolled to.
   // Leaving a pane also takes the keyboard back from a field it had.
@@ -46,6 +74,7 @@ Item {
     }
     if (!setups.busy) setups.message = ""
     setups.refresh()
+    Hyprland.refreshMonitors()
     root.opened = true
     window.visible = true
     if (fresh) Qt.callLater(function() { keys.forceActiveFocus() })
@@ -262,6 +291,8 @@ Item {
         text: settings.applying ? "Applying…"
             : settings.applyError ? "Not applied, so the previous setting is back: " + settings.applyError
             : root.setupsSpeak ? (setups.busy ? setups.busyText : setups.message)
+            : root.pane === "setups" && setupsLoader.item && setupsLoader.item.liveView && setupsLoader.item.displays.length > 1
+              ? "Drag to arrange. It applies right away and lasts until a display or dock changes. Save it to keep it."
             : root.pane === "setups" ? "Changes to the setup in use apply right away. Others are saved for next time."
             : "Changes apply right away."
         color: settings.applyError || (root.setupsSpeak && !setups.busy && setups.failed) ? Color.urgent : root.dim
@@ -403,6 +434,7 @@ Item {
     id: setupsPane
     Setups {
       store: setups
+      monitors: root.monitors
       macModifiers: settings.get("keyboard", "macModifiers") === true
       onDoneTyping: { root.unreveal(); keys.forceActiveFocus() }
       onReveal: function(item, below) { root.reveal(item, below) }

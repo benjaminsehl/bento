@@ -125,6 +125,11 @@ plugging in brings it back.
 - Once you have two setups, right-click the page dots to choose one by hand.
   It holds until a display or dock changes. `bento setup pick` does the same
   from the keyboard.
+- With no setup in use, drag the displays in the Setups pane: they snap
+  together and move at once, keeping their scale and rotation. That lasts
+  until a display or dock changes, or you choose Automatic; save it as a
+  setup to keep it. From a terminal,
+  `bento setup arrange internal=2560,540 "LG UltraFine"=0,0` does the same.
 - A setup can give a keyboard another keymap, like PC at work. Each keyboard
   has its own in the Keyboard pane.
 - Tiled 5K displays such as the LG UltraFine run on one stream, scaled to
@@ -274,7 +279,7 @@ remove`: the shell keeps the older Bento's Service until it restarts.
 | Bar dots and previews | `pages/` (an Omarchy shell bar widget) |
 | Overview, the drawer, the Bento app | `overview/`, `drawer/`, `prefs/`, behind one overlay (`Overlay.qml`) |
 | Settings and applying them | `defaults.json`, `Settings.qml`, `hypr/settings.lua`, `bin/bento-apply` |
-| Setups and keyboards | `hypr/setups.lua` (with `edid.lua`, `sysfs.lua`, `json.lua`), `hypr/keyboard.lua`, `keyboards.json`, `bin/bento-setup`, `prefs/Setups*`, `prefs/Keyboards.qml`, `pages/SetupsMenu.qml` |
+| Setups and keyboards | `hypr/setups.lua` (with `edid.lua`, `sysfs.lua`, `json.lua`), `hypr/keyboard.lua`, `keyboards.json`, `bin/bento-setup`, `prefs/Setups*`, `prefs/Identify.qml`, `prefs/Keyboards.qml`, `pages/SetupsMenu.qml` |
 | Plugging in and out of Omarchy | `manifest.json`, `Service.qml`, `install.sh`, `bin/bento-cleanup`, `uninstall.sh` |
 
 MIT licensed.

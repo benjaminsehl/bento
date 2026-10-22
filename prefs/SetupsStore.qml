@@ -23,6 +23,7 @@ import "SetupsData.js" as Data
 //
 //   SetupsStore { id: setups; repo: settings.repo }
 //   setups.use("w81c")       // or "auto"
+//   setups.arrange([{ display: "internal", at: [2560, 540] }, …])
 //   setups.editSetup("w81c", function(s) { return Data.setPrimary(s, 0) })
 Item {
   id: root
@@ -127,6 +128,20 @@ Item {
     begin("setups", id === "auto" ? "Going back to automatic…" : "Switching to " + Data.nameOf(root.file, root.setupState, id) + "…")
     run(["bash", root.repo + "/bin/bento-setup", id], function(code, out, err) {
       if (code === 0) root.finish(Data.lastLine(out) || "Done.", false)
+      else root.finish(Data.lastLine(err) || "bento-setup didn't work.", true)
+    })
+  }
+
+  // Put the displays where the pane's drawing has them, with no setup in
+  // use: one { display, at } for every display that's lit. bento-setup holds
+  // the arrangement until a display or dock changes, and puts the old one
+  // back if Hyprland's check fails.
+  function arrange(places) {
+    if (root.busy) return
+    var args = Data.list(places).map(function(p) { return p.display + "=" + p.at[0] + "," + p.at[1] })
+    begin("setups", "Arranging…")
+    run(["bash", root.repo + "/bin/bento-setup", "arrange"].concat(args), function(code, out, err) {
+      if (code === 0) root.finish(Data.lastLine(out) || "Arranged.", false)
       else root.finish(Data.lastLine(err) || "bento-setup didn't work.", true)
     })
   }

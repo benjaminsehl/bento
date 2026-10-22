@@ -89,11 +89,14 @@ Item {
       width: parent.width
       spacing: 0
 
+      // Checked while no setup is held by hand; choosing it while the
+      // displays are arranged by hand still ends the arrangement, as
+      // `bento setup auto` does.
       MenuRow {
         text: "Automatic"
         note: root.switching === "auto" ? "switching…" : Data.automaticNote(root.model)
         checked: root.model.automatic
-        onActivated: root.choose("auto", root.model.automatic)
+        onActivated: root.choose("auto", !root.model.automaticChanges)
       }
 
       Repeater {
