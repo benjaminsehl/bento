@@ -196,8 +196,12 @@ them in the state file as a setup with no name (an arrangement) and Hyprland
 reloads; every load after that places the displays from the record, as it
 places a setup's, until a display or dock changes.
 
-Runtime rules are used in two places only: guarding tiled displays the moment
-they connect, and the second pass when Bento takes over two lit tiles.
+Runtime rules are used in one place only: guarding tiled displays the moment
+they connect. They go to Hyprland with `hyprctl eval`, because an event
+handler or a timer may only read and dispatch ([docs/safety.md](safety.md));
+see [Display rules](#display-rules). The second pass when Bento takes over
+two lit tiles is a reload, and goes by eval only when there's no reload to be
+had.
 
 ### Where things live
 
@@ -396,6 +400,10 @@ built, it holds:
   [Display rules](#display-rules)).
 - `requested`: the rules of the last load (`hash`, `monitors`). Entries with
   `disabled` come only from the tile guard.
+- `evals`: the last five evals sent after a load (the tile guard on a
+  hotplug, a second pass that couldn't reload), oldest first, kept across
+  loads: `{at, load, key, chunk}`, where `key` is the output and `chunk` the
+  Lua that `hyprctl eval` ran.
 - `check`: `{load, state, at, detail}`, where `state` is `pending`, `passed`,
   `failed` or `skipped`.
 - `last_failure`: the last check that failed, with the setup it blames. `id`
@@ -569,7 +577,9 @@ places a setup's.
 ### What happens on a dock plug
 
 1. The first UltraFine tile connects. Straight away, with no settle, the tile
-   guard makes sure both tiles are never lit at once (see Display rules).
+   guard sends its rules by `hyprctl eval`, so the tiles don't stay lit
+   together. Hyprland runs them a few milliseconds later, though, and a tile
+   that connects in between can light for that long (see Display rules).
 2. Bento waits for things to settle.
 3. It reads what is plugged in. If the relevant devices changed, it reloads.
    If they didn't (the event was Bento turning a tile off), it only looks for
@@ -610,14 +620,46 @@ that matches, or Omarchy's placement, never the arrangement.
   - At runtime, a `monitor.added` handler acts right away on a connector the
     load didn't already plan for. If the new output is the left tile, Bento
     turns the whole display off by description, then gives this connector
-    its single-stream mode, so the other tile connects already off. If it's
-    another tile, Bento turns it off by connector, never by description (that
-    would turn off a lit left tile too); the left tile can then only come up
-    alone, and its own `monitor.added` sets its mode. A left tile with no
-    modes yet gets nothing; the settle's reload plans it. A phantom is turned
-    off by name.
-  - The handler runs before Hyprland sees the next hotplug, so two tiles are
-    never lit at different modes.
+    its single-stream mode, so the other tile connects already off once that
+    eval has run (see below). If it's another tile, Bento turns it off by
+    connector, never by description (that would turn off a lit left tile
+    too); the left tile can then only come up alone, and its own
+    `monitor.added` sets its mode. A left tile with no modes yet gets
+    nothing; the settle's reload plans it. A phantom is turned off by name.
+  - After the load, rules go by `hyprctl eval`. An event handler or a timer
+    may only read and dispatch ([docs/safety.md](safety.md)), so Bento
+    writes the rules as `hl.monitor` calls and starts `hyprctl eval` with
+    them through `hl.exec_cmd`, which returns at once, the way Omarchy's
+    Scale shortcut sends its rule. The `desc:` rule and the left tile's own
+    go in one eval, in that order. Only plain values are written: numbers,
+    `true`, a connector name of letters, digits and `. _ -` (the check
+    Omarchy's script makes), and a description of letters, digits, spaces and
+    `. _ , ( ) + / # -`. A display whose name or description has anything
+    else gets no rule from the event; the settle's reload plans it. Like any
+    eval, it clears what `hyprctl configerrors` lists.
+  - Each eval checks inside Hyprland that it's still the load that sent it,
+    and does nothing otherwise. Every eval is its own `hyprctl`, so one
+    already on its way when a reload is asked for can get there after the
+    reload. A reload starts Hyprland's Lua afresh, and each load leaves its
+    number there (`bento_setups`), so an eval that finds another load's
+    number, or none (Bento turned off), changes nothing. In the same way,
+    an eval for an output does nothing once a newer one for that output has
+    run.
+  - One eval per output at a time. The first goes at once; for 500 ms after
+    it, only the latest rules for that output are kept, and they go when the
+    window ends, unless they're what just went. So a tile that flaps sends
+    at most two evals a window. Turning the output itself off doesn't wait,
+    though: the connector may have come back as another tile, and the rule
+    that lit it as the left tile would light both. Nothing goes once the load
+    has asked for a reload, or once a newer load has written the state file
+    (an old load's timer can still fire after a reload), or while the state
+    file can't be read. The last five evals are in the state file (`evals`).
+  - Hyprland runs an eval a few milliseconds after the event, once `hyprctl`
+    has started and reached it, not inside the handler. A tile that connects
+    within those milliseconds comes up on the rules it finds, and its own
+    `monitor.added` turns it off straight after. For those milliseconds both
+    tiles can be lit (a rule set inside the handler would rule that out, but
+    a handler may not set rules); the hand test at the desk watches for it.
 - **The single-stream mode** is the largest mode in the display's mode list
   that has the panel's shape and is at most 3840 wide, at its highest refresh
   up to 61 Hz. Its scale is worked out from the mode, so the display always
@@ -635,9 +677,17 @@ that matches, or Omarchy's placement, never the arrangement.
     `0x0` mode, and never asks for `preferred` on a tile.
 - **When two tiles are lit, Bento uses two passes.** First it turns the extra
   tiles off and keeps the left tile's current mode. Once `monitor.removed`
-  has arrived for each of them (or 500 ms pass), it sets the left tile's new
-  mode, even when that's the mode it already runs. This matters when Bento
-  takes over a display Omarchy's catch-all had lit on both tiles.
+  has arrived for each of them (or 500 ms pass and Hyprland lists none of
+  them), it reloads ("second pass"). The next load finds the left tile alone
+  and gives it its new mode while the config loads, even when that's the
+  mode it already runs. An eval would do too, but it would empty `hyprctl
+  configerrors` just after the load that `bento-apply` and `install.sh`
+  check. The load that reloads leaves its check to the next load, which
+  also says "Work · LG UltraFine" when the setup is new; "Back to
+  automatic" is said at once. When the reload is refused (three this
+  minute, Omarchy holding reloads, no state file), or a tile is still
+  listed at 500 ms, the new mode goes by eval, as above. This matters when
+  Bento takes over a display Omarchy's catch-all had lit on both tiles.
 - **Bento never emits a rule for a connector Hyprland hides,** like the
   Studio Display's second one. Save never writes `tiles` for it.
 - **The laptop panel** follows Omarchy's scale. Bento reads it from
@@ -729,7 +779,8 @@ that matches, or Omarchy's placement, never the arrangement.
   read is at 300 ms, then one every 250 ms, at most 13 (3.3 s). Two reads in
   a row that agree and match end it at once; a difference only counts from
   the third read, once two reads agree. Reads before the second pass never
-  count as agreeing. It checks only what Bento set: mode (refresh within 0.05 Hz, or 1 Hz
+  count as agreeing, and a load that has asked for a reload stops checking:
+  the next load checks. It checks only what Bento set: mode (refresh within 0.05 Hz, or 1 Hz
   for a mode taken from the kernel), scale (within 0.001), position,
   rotation, and that the tiles it turned off are off. The mode also has to be
   in that display's mode list, which catches a silent custom mode.
@@ -1164,9 +1215,13 @@ found, a refused arrangement's included.
   broken `setups.json`, a failed check, or an error in the rest of
   `setups.lua`.
 - **Layout changes go through a reload.** The only runtime rules are the tile
-  guard and the second pass for tiles. A drag is no exception: each drop is
-  one full reload, checked like any other, and an arrangement is a record in
-  the state file, never a rule left behind in Hyprland.
+  guard's, and the second pass's when it can't reload. They go by `hyprctl
+  eval`, never by `hl.monitor` in an event or a timer: at most one at a time
+  per output (but for turning that output off), none once a reload is on its
+  way, and one that gets there after a reload does nothing. A drag is no
+  exception: each drop is one full reload, checked like any other, and an
+  arrangement is a record in the state file, never a rule left behind in
+  Hyprland.
 - **Every change Bento makes is checked,** with one retry and no loops. The
   check ignores what Omarchy's lid and mirror toggles do to the laptop.
   Bento makes at most 3 automatic reloads a minute, none when it can't write
@@ -1344,16 +1399,36 @@ bento setup why         # one UltraFine, its connectors, the last check
 - The laptop sits at 2560,540, and the cursor crosses freely between the
   UltraFine and the laptop, with no gap and no wall.
 - A rule the guard sends from an event shows in `hyprctl monitors` straight
-  away, without a reload.
+  away, without a reload. `jq .evals ~/.local/state/bento/setup.json` shows
+  what went, by `hyprctl eval`; check what each `chunk` does, not its exact
+  text. For a plug: one entry keyed `DP-1` whose `chunk` turns
+  `desc:LG Electronics LG UltraFine 309NTWGC3705` off and then gives DP-1
+  3840×2160 at scale 1.5, at the refresh Hyprland lists for it (so
+  `3840x2160@59.999` or so; `@60.000` only when the event came without
+  modes; 3200×1800 at 1.25 when Hyprland's mode list is stale), at `auto`
+  unless the setup in use when you plugged it in places the UltraFine; and
+  one keyed `DP-2` that turns DP-2 off. Each `chunk` first checks that it's
+  still its load (`b.load ==` the entry's `load`). At most two entries per
+  output for one plug, plus an "off" when a connector comes back as the
+  other tile, all sent before Bento's settle reload, so their `load` is
+  lower than `jq .load`.
+- The first load after enabling Bento at the desk finds both tiles lit
+  (Omarchy's catch-all lit them). It turns DP-2 off and reloads for the
+  second pass: `jq .reloads` says "second pass", nothing is added to
+  `evals`, and `hyprctl configerrors` straight after enabling is what that
+  reload found, not emptied by an eval. "Work · LG UltraFine" comes once,
+  after that reload.
 
 **At the desk:**
 
 - Plug the UltraFine in tile by tile, in both orders; log in docked; reload
   docked; close the lid docked; mirror. Each time: DP-1 at 3840×2160, scale
   1.5, at 0,0; the laptop at 2560,540; DP-2 off in `hyprctl monitors all`;
-  never both tiles lit; at most one reload by Bento (`reloads` in
-  `~/.local/state/bento/setup.json`); no "didn't work" notification for
-  Work.
+  never both tiles lit, not even for a moment as the second tile connects
+  (the guard's eval lands a few milliseconds after the event: report a
+  flash of both); at most one reload by Bento (`reloads` in
+  `~/.local/state/bento/setup.json`; a second, "second pass", means a load
+  found both tiles lit: report it); no "didn't work" notification for Work.
 - Replug until a tile comes up at 0×0 or 640×480. The desk recovers without
   freezing: no config error, the right tile stays off, and DP-1 comes back
   as above.

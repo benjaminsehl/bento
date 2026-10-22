@@ -64,8 +64,3 @@ guards the way in:
 - `hypr/pages.lua` keeps each left-edge workspace rule (`M.edges[...].rule`)
   and calls `:set_enabled(false)` on it from its event handlers. It has
   held up for a week, but it breaks rules 1 and 2 and has to change.
-- `hypr/setups.lua` adds monitor rules after the load: its `monitor.added`
-  handler sends the hotplug tile guard (`runtime_guard`), and its
-  `monitor.removed` handler and a timer send the tile guard's second pass.
-  It breaks rule 2. The fix sends those rules with `hyprctl eval` through
-  `hl.exec_cmd`, as Omarchy's Scale shortcut does.

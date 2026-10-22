@@ -17,7 +17,9 @@
 -- Nothing here writes to ~/.config/hypr. Rules go through hl.monitor, after
 -- monitors.lua, so they win for the displays they name. Omarchy's own toggles
 -- load later and still win: the lid toggles for the laptop, and the mirror
--- toggle for the external display it puts the laptop's picture on.
+-- toggle for the external display it puts the laptop's picture on. After the
+-- load, an event or a timer may only read and dispatch (docs/safety.md), so
+-- the few rules sent then go through `hyprctl eval` instead (send, below).
 
 -- nil when x isn't a number that fits an integer.
 local function int(x) return math.tointeger(math.floor((tonumber(x) or 0) + 0.5)) end
@@ -636,6 +638,16 @@ return function(lib, S)
   for _, k in ipairs({ "drift", "retry", "stopped", "guard_notice" }) do
     if type(prev[k]) ~= "string" then state[k] = nil end
   end
+  -- The rules sent after the load (send, below), the last five, so the hand
+  -- test at the desk can see what went out.
+  local evals = json.array()
+  for _, e in ipairs(type(prev.evals) == "table" and prev.evals or {}) do
+    if type(e) == "table" and type(e.key) == "string" and type(e.chunk) == "string" then
+      evals[#evals + 1] = { at = tonumber(e.at) or 0, load = math.tointeger(e.load) or 0, key = e.key, chunk = e.chunk }
+    end
+  end
+  while #evals > 5 do table.remove(evals, 1) end
+  state.evals = evals
   -- An arrangement by hand (see the request below) is kept only whole.
   if type(prev.arranged) ~= "table" or type(prev.arranged.fingerprint) ~= "string"
     or type(prev.arranged.displays) ~= "table" then
@@ -1202,6 +1214,7 @@ return function(lib, S)
     return rule
   end
 
+  -- Only while the config loads. After it, rules go through send (below).
   local function emit(rule)
     hl.monitor(rule)
   end
@@ -1372,6 +1385,7 @@ return function(lib, S)
   -- Never a loop: besides the rules for each kind of reload, at most three
   -- automatic reloads a minute. The count lives in the state file, the only
   -- thing a reload keeps, so there's no reload when it can't be written.
+  local reloading = false
   local function reload(why)
     if paused() then return false end
     local now, r = os.time(), state.reloads
@@ -1379,8 +1393,145 @@ return function(lib, S)
     if (tonumber(r.count) or 0) >= 3 then return false end
     state.reloads = { at = r.at, count = (tonumber(r.count) or 0) + 1, why = why }
     if not write_state() then return false end
+    reloading = true
     hl.exec_cmd("hyprctl reload")
     return true
+  end
+
+  -- -------------------------------------------------------------- after the load
+  -- The tile guard's rules after the load (a display plugged in, the second
+  -- pass) go the way Omarchy's Scale shortcut sends its rule
+  -- (omarchy-hyprland-monitor-scaling): `hyprctl eval` with hl.monitor calls,
+  -- started by hl.exec_cmd, which returns at once. Hyprland runs them a few
+  -- milliseconds later. Only plain values are written into that Lua: numbers
+  -- from numbers, true, and names that can't end a Lua string or a shell
+  -- word: a connector name as Omarchy's script allows one, a description of
+  -- letters, digits, spaces and . _ , ( ) + / # -. A rule that can't be
+  -- written that way isn't sent; the settle's reload plans that display.
+  local function lua_number(x)
+    if math.type(x) == "integer" then return string.format("%d", x) end
+    if math.type(x) ~= "float" or x ~= x or x == math.huge or x == -math.huge then return nil end
+    for digits = 15, 17 do
+      local text = string.format("%." .. digits .. "g", x)
+      if tonumber(text) == x then return text:find("[.e]") and text or text .. ".0" end
+    end
+    return nil
+  end
+  local function lua_output(v)
+    if type(v) ~= "string" or #v > 160 then return nil end
+    local desc = v:match("^desc:(.*)$")
+    if desc then return desc:match("^[A-Za-z0-9 ._,()+/#%-]+$") and '"desc:' .. desc .. '"' or nil end
+    return v:match("^[A-Za-z0-9._%-]+$") and '"' .. v .. '"' or nil
+  end
+  -- Mode and position text, written again from the numbers in it; anything
+  -- else in it and it's refused.
+  local function lua_mode(v)
+    local w, h, r = (type(v) == "string" and v or ""):match("^(%d+)x(%d+)@(%d+%.%d+)$")
+    w, h, r = math.tointeger(tonumber(w)), math.tointeger(tonumber(h)), tonumber(r)
+    local text = w and h and r and string.format("%dx%d@%.3f", w, h, r)
+    return text == v and '"' .. text .. '"' or nil
+  end
+  local function lua_position(v)
+    if v == "auto" then return '"auto"' end
+    local x, y = (type(v) == "string" and v or ""):match("^(%-?%d+)x(%-?%d+)$")
+    x, y = math.tointeger(tonumber(x)), math.tointeger(tonumber(y))
+    local text = x and y and string.format("%dx%d", x, y)
+    return text == v and '"' .. text .. '"' or nil
+  end
+  local fields = {
+    { "output", lua_output },
+    { "mode", lua_mode },
+    { "position", lua_position },
+    { "scale", function(v) return type(v) == "number" and v > 0 and lua_number(v) or nil end },
+    { "transform", function(v) return math.type(v) == "integer" and v >= 0 and v <= 7 and lua_number(v) or nil end },
+    { "disabled", function(v) return v == true and "true" or nil end },
+  }
+  -- Rules as one chunk of hl.monitor calls, in order; nil when any field
+  -- isn't one of these or can't be written plainly.
+  local function lua_chunk(rules)
+    local calls = {}
+    for _, rule in ipairs(rules) do
+      if type(rule) ~= "table" or rule.output == nil then return nil end
+      local parts, known = {}, {}
+      for _, f in ipairs(fields) do
+        local name, write = f[1], f[2]
+        known[name] = true
+        if rule[name] ~= nil then
+          local text = write(rule[name])
+          if not text then return nil end
+          parts[#parts + 1] = name .. " = " .. text
+        end
+      end
+      for k in pairs(rule) do
+        if not known[k] then return nil end
+      end
+      calls[#calls + 1] = "hl.monitor({ " .. table.concat(parts, ", ") .. " })"
+    end
+    return #calls > 0 and table.concat(calls, "; ") or nil
+  end
+
+  -- Whether this load still has the say: it hasn't asked for a reload, and
+  -- no load since has written the state file. An old load's timer can still
+  -- fire after a reload, and its rules would land on top of the new load's.
+  local function current()
+    if reloading then return false end
+    local now = json.read(state_path)
+    return type(now) == "table" and now.load == state.load
+  end
+
+  -- current() can't call back an eval already on its way: each is its own
+  -- hyprctl, and a reload asked for just after can get to Hyprland first. So
+  -- each eval checks again inside Hyprland. A reload starts Hyprland's Lua
+  -- afresh, without this table or with the next load's, and an eval that
+  -- finds another load's number does nothing; so does one that finds a newer
+  -- eval for its output got there first.
+  _G.bento_setups = { load = state.load, sent = {} }
+  local seq = 0
+  local function guarded(key, body)
+    seq = seq + 1
+    local k = lua_output(key)
+    return string.format("local b = bento_setups; if b and b.load == %d and (b.sent[%s] or 0) < %d then b.sent[%s] = %d; %s end",
+      state.load, k, seq, k, seq, body)
+  end
+
+  -- At most one eval per output at a time, but for an "off" (send, below).
+  -- The first goes at once (the guard has to be quick); for the next 500 ms
+  -- only the latest rules for that output are kept, and go when the window
+  -- ends, unless they're what just went. So a burst of events sends two
+  -- evals a window at most.
+  local window, outputs = 500, {}
+  local function dispatch(key, body)
+    local chunk = guarded(key, body)
+    hl.exec_cmd("hyprctl eval " .. lib.quote(chunk))
+    local list = state.evals
+    list[#list + 1] = { at = os.time(), load = state.load, key = key, chunk = chunk }
+    while #list > 5 do table.remove(list, 1) end
+    write_state()
+    local slot = { sent = body }
+    outputs[key] = slot
+    after(window, function()
+      if outputs[key] ~= slot then return end -- an "off" went since (send)
+      outputs[key] = nil
+      local waiting = slot.waiting
+      if waiting and waiting ~= slot.sent and current() then dispatch(key, waiting) end
+    end)
+  end
+
+  -- Sends rules for one output (key), in one eval, in order. Rules that
+  -- must follow each other (the desc: rule, then the left tile's own) go
+  -- together. Rules that can't be written take the place of any waiting.
+  -- Turning the output itself off doesn't wait for the window: it may have
+  -- come back as another tile, and the rule that lit it as the left tile
+  -- would light both. That eval is newer, so the one before can't undo it.
+  local function send(key, rules)
+    local body = lua_output(key) and lua_chunk(rules)
+    local slot = outputs[key]
+    local off = #rules == 1 and rules[1].output == key and rules[1].disabled == true
+    if slot and not (off and body and body ~= slot.sent) then
+      slot.waiting = body
+    elseif body and current() then
+      dispatch(key, body)
+    end
   end
 
   -- -------------------------------------------------------------- comparing
@@ -1478,11 +1629,32 @@ return function(lib, S)
   end
 
   -- -------------------------------------------------------------- pass 2
+  -- A reload, once Hyprland lists none of the other tiles: the next load
+  -- finds the left tile alone and gives it its mode while the config loads.
+  -- An eval would empty what `hyprctl configerrors` lists, just after the
+  -- load bin/bento-apply and install.sh check, with nothing to fill it again.
+  -- Only when there's no reload to be had does the rule go by eval.
   local check = { tries = 0, last = nil, done = false }
   local function second_pass()
     if not pass2.pending then return end
     pass2.pending = false
-    for _, rule in ipairs(pass2.items) do emit(rule) end
+    local now, lit = monitors_now(), false
+    for name in pairs(pass2.waiting) do
+      if now[name] then lit = true end
+    end
+    if not lit and current() then
+      -- The next load checks, so it also says what this one's check would
+      -- have: a new setup (it compares `active` with this load's), and
+      -- "Back to automatic", here and now.
+      local active_now = state.active
+      state.active = type(prev.active) == "string" and prev.active or nil
+      if reload("second pass") then
+        if back_to_auto then lib.notify("low", "Back to automatic: " .. back_to_auto) end
+        return
+      end
+      state.active = active_now
+    end
+    for _, rule in ipairs(pass2.items) do send(rule.output, { rule }) end
     check.last = nil
   end
   if pass2.pending then after(500, second_pass) end
@@ -1578,7 +1750,8 @@ return function(lib, S)
   -- At 300 ms, then every 250 ms until two reads in a row agree, for at most
   -- 3.3 s. A match ends it at once; a mismatch only after 800 ms.
   local function check_step()
-    if check.done then return end
+    -- Once this load has asked for a reload, the next load checks.
+    if check.done or reloading then return end
     check.tries = check.tries + 1
     local now = monitors_now()
     local diffs, mine = differences(now)
@@ -1669,7 +1842,8 @@ return function(lib, S)
 
   -- -------------------------------------------------------------- monitor events
   -- A tiled display that turns up after the load: guard it at once, before
-  -- its tiles fight over the cable; the settle then reloads properly.
+  -- its tiles fight over the cable, by eval (send); the settle then reloads
+  -- properly.
   local function runtime_guard(m)
     local c = sysfs.connector(m.name)
     if not c or c.status ~= "connected" then return end
@@ -1679,12 +1853,13 @@ return function(lib, S)
     if not t then
       -- Maybe a tiled display's phantom (see find_displays): off, by name
       -- only, when the display is one the guard drives.
-      local conns = sysfs.connectors()
+      local conns, phantom = sysfs.connectors(), false
       for _, d in ipairs(find_displays({ drm = conns, tiles = sysfs.edid.tiled_groups(conns) }, monitors_now(), cache)) do
         if d.tiled and is_phantom(d, m.name) and single_stream(d.modes, d.native[1], d.native[2]) then
-          emit({ output = m.name, disabled = true })
+          phantom = true
         end
       end
+      if phantom then send(m.name, { { output = m.name, disabled = true } }) end
       return
     end
     local modes = {}
@@ -1704,19 +1879,22 @@ return function(lib, S)
       -- Another tile that can't show the panel, modes or none (0×0 right
       -- after a replug): off. Never a desc: rule here: it would turn off a
       -- lit left tile too.
-      emit({ output = m.name, disabled = true })
+      send(m.name, { { output = m.name, disabled = true } })
       return
     end
     if mw == 0 then return end -- the left tile, not probed yet: the settle reload plans it
     local mode = single_stream(modes, full_w, full_h)
     if not mode then return end
     local p = placement[c.edid.key]
-    if description ~= "" then emit({ output = "desc:" .. description, disabled = true }) end
+    -- One eval, the desc: rule first, so the connector rule after it wins.
+    local rules = {}
+    if description ~= "" then rules[#rules + 1] = { output = "desc:" .. description, disabled = true } end
     local rule = { output = m.name, mode = mode_text(mode),
       scale = tile_scale({ display = c.edid.key, native = { full_w, full_h } }, mode, p and p.own),
       position = p and p.position and string.format("%dx%d", p.position[1], p.position[2]) or "auto" }
     if p and p.transform then rule.transform = p.transform end
-    emit(rule)
+    rules[#rules + 1] = rule
+    send(m.name, rules)
   end
 
   hl.on("monitor.added", function(m)
