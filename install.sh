@@ -85,7 +85,7 @@ done
 # once that is gone, starts the cleanup instead. It names no checkout, so an
 # update leaves it alone.
 stub=$(cat <<'EOF'
--- Written by Bento (io.github.benjaminsehl.bento), stub 3. Bento deletes this
+-- Written by Bento (io.github.benjaminsehl.bento), stub 4. Bento deletes this
 -- file when it is disabled or removed in Omarchy; deleting it by hand is safe.
 local home = os.getenv("HOME") or ""
 local plugin = home .. "/.config/omarchy/plugins/io.github.benjaminsehl.bento"
@@ -101,6 +101,9 @@ local function write(path, s)
   local h = io.open(path, "w")
   if h then h:write(s); h:close() end
 end
+-- Omarchy's keybindings menu also runs this file, in plain Lua with a stand-in
+-- `hl` whose functions are tables. Only the real Hyprland may arm the breaker.
+local real = type(hl) == "table" and type(hl.timer) == "function" and type(hl.on) == "function"
 local function notify(title, body)
   local q = function(s) return "'" .. s:gsub("'", "'\\''") .. "'" end
   pcall(os.execute, "setsid -f sh -c " .. q("sleep 3; notify-send -u critical " .. q(title) .. " " .. q(body))
@@ -118,6 +121,7 @@ if f then
   local me = os.getenv("HYPRLAND_INSTANCE_SIGNATURE") or "?"
   local starting, paused = state .. "/starting", state .. "/paused"
   local ok, skip = pcall(function()
+    if not real then return false end
     if read(paused) then return true end
     local other = read(starting)
     if other and other ~= me then
@@ -133,13 +137,17 @@ if f then
         .. "Run `bento resume` to load Bento again.")
     end
   else
-    pcall(os.execute, "mkdir -p '" .. state:gsub("'", "'\\''") .. "'")
-    write(starting, me)
-    pcall(hl.timer, function() os.remove(starting) end, { timeout = 120000, type = "oneshot" })
-    _G.bento_repo, _G.bento_stub = plugin, 3
+    if real then
+      pcall(os.execute, "mkdir -p '" .. state:gsub("'", "'\\''") .. "'")
+      write(starting, me)
+      pcall(hl.timer, function() os.remove(starting) end, { timeout = 120000, type = "oneshot" })
+      -- A Hyprland that quits cleanly didn't crash, however soon after a reload.
+      pcall(hl.on, "hyprland.shutdown", function() os.remove(starting) end)
+    end
+    _G.bento_repo, _G.bento_stub, _G.bento_real = plugin, 4, real
     -- An error stops at Bento: the rest of your config still loads.
     local loaded, err = pcall(dofile, plugin .. "/hypr/bento.lua")
-    if not loaded then
+    if not loaded and real then
       write(state .. "/errors", "bento.lua: " .. tostring(err))
       notify("Bento didn't load", tostring(err))
     end

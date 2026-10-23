@@ -125,14 +125,17 @@ if not finished then errors[#errors + 1] = "keys: " .. tostring(finish_err) end
 -- Omarchy's bindings, as keyboard.lua recorded them, are for lib.on_mac and
 -- lib.finish while the modules load. Nothing after the load may use them
 -- (docs/safety.md, rule 1), so they go.
-lib.omarchy_binds = {}
+lib.omarchy_binds, lib.alt_mirrors, lib.pc_returns = {}, {}, {}
 
-local f = io.open(lib.state .. "/errors", "w")
+-- Omarchy's keybindings menu runs this too, with a stand-in `hl` (the stub
+-- says so in bento_real). Its errors aren't Hyprland's, so it leaves the file.
+local real = _G.bento_real ~= false
+local f = real and io.open(lib.state .. "/errors", "w")
 if f then
   f:write(table.concat(errors, "\n"))
   f:close()
 end
-if #errors > 0 then
+if real and #errors > 0 then
   lib.notify("critical", "Bento", table.concat(errors, "\n"))
 end
 

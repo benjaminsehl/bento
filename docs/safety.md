@@ -22,7 +22,10 @@ guards the way in:
   `~/.local/state/bento/starting`. If a Hyprland finds another one's mark,
   that one stopped while Bento was new to it, so it starts without Bento,
   says so in a notification, and stays that way until `bento resume`. A
-  crash costs one login, not every login.
+  crash costs one login, not every login. A Hyprland that quits cleanly
+  clears its mark, and only the real Hyprland sets one: Omarchy's
+  keybindings menu runs the stub too, with a stand-in `hl`, and leaves the
+  breaker and the errors file alone.
 - **Errors stop at Bento.** `bento.lua` runs inside a `pcall`, so a Lua error
   goes to `~/.local/state/bento/errors` and a notification, and the rest of
   your config still loads.
