@@ -74,6 +74,23 @@ function lib.send(app, term)
   end
 end
 
+-- ------------------------------------------------------- after the load
+-- An event or a timer only reads and dispatches (docs/safety.md, rule 2).
+-- A config change after the load goes the way Omarchy's Scale shortcut
+-- sends its rule: `hyprctl eval`, started by hl.exec_cmd, which returns at
+-- once, so Hyprland runs the chunk a moment later, outside the handler.
+-- Write chunks from constants and numbers only. Each runs only while this
+-- load is the current one: one that lands after a reload does nothing.
+-- delay_ms holds it back that long first.
+lib.load = string.format("%d%06d", os.time(), math.random(0, 999999))
+_G.bento_load = lib.load
+function lib.eval(chunk, delay_ms)
+  local guarded = "if bento_load == '" .. lib.load .. "' then " .. chunk .. " end"
+  local cmd = "hyprctl eval " .. lib.quote(guarded)
+  if delay_ms then cmd = string.format("sleep %.3f; %s", delay_ms / 1000, cmd) end
+  hl.exec_cmd(cmd)
+end
+
 function lib.rebind(keys, description, dispatcher, options)
   hl.unbind(keys)
   o.bind(keys, description, dispatcher, options)
@@ -189,18 +206,19 @@ end
 
 -- Omarchy's own animation for hidden workspaces (default/hypr/looknfeel.lua),
 -- put back after an instant switch.
-local special_animation = { leaf = "specialWorkspace", enabled = true, speed = 3, bezier = "easeOutQuint", style = "slidevert" }
+local special_animation = 'hl.animation({ leaf = "specialWorkspace", enabled = true, speed = 3, bezier = "easeOutQuint", style = "slidevert" })'
 
 -- Show or hide a hidden workspace in one frame. The shell calls this when its
 -- stand-in for the scratchpad comes to rest, so the real one takes over with
--- no animation of its own.
+-- no animation of its own. It comes through a dispatch from the shell, not an
+-- event; the animation comes back by eval, not from a timer.
 function lib.special_now(name, show)
   local open = lib.open_special()
   if show == (open == name) then return end
   hl.animation({ leaf = "specialWorkspace", enabled = false })
   if show and open then hl.dispatch(hl.dsp.workspace.toggle_special(open)) end
   hl.dispatch(hl.dsp.workspace.toggle_special(name))
-  hl.timer(function() hl.animation(special_animation) end, { timeout = 120, type = "oneshot" })
+  lib.eval(special_animation, 120)
   changed()
 end
 

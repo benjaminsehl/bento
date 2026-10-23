@@ -30,6 +30,8 @@ The code is `pages/BarWidget.qml` and `pages/PagePreview.qml` for the bar, and `
 - **Swipe past the first dot** for an empty page that becomes dot #1. Hyprland can't create workspaces off
   the left end, so `hypr/pages.lua` keeps one empty, persistent workspace just left of the first page. The bar hides
   it until you're on it. Open a window there and it becomes a real page, and a new empty one is placed to its left.
+  Hyprland only takes that rule while its config loads, so placing the new one means a `hyprctl reload`, which
+  Bento makes for you, at most four times a minute (counted in `~/.local/state/bento/pages-reloads`).
 
 Workspace ids can't go below 1, so new sessions start at workspace 1001 to leave room on the left. If a monitor
 still runs out of room (one plugged in later starts at 1), its pages move up by a thousand ids, onto ids no other

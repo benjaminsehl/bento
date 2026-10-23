@@ -118,6 +118,11 @@ for _, module in ipairs({ "keyboard", "setups", "keys", "trackpad", "pages", "wi
   local ok, err = pcall(function() dofile(repo .. "/hypr/" .. module .. ".lua")(lib, S) end)
   if not ok then errors[#errors + 1] = module .. ": " .. tostring(err) end
 end
+-- Omarchy's bindings, as keyboard.lua recorded them, are for lib.on_mac while
+-- the modules load. Nothing after the load may use them (docs/safety.md,
+-- rule 1), so they go.
+lib.omarchy_binds = {}
+
 local f = io.open(lib.state .. "/errors", "w")
 if f then
   f:write(table.concat(errors, "\n"))

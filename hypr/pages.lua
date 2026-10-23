@@ -62,18 +62,58 @@ return function(lib, S)
   -- Ids can't go below 1, so new sessions start at 1001. If a monitor still
   -- runs out of room (a monitor plugged in later starts at 1), its pages are
   -- shifted up a thousand ids at a time, to ids no other monitor has.
+  --
+  -- The rules that keep the empty pages are declared while the config loads,
+  -- and only then (docs/safety.md, rules 1 and 2): nothing keeps a rule, and
+  -- no event or timer adds or changes one. When the empty pages belong
+  -- somewhere else, a reload plans them again (replan, below).
   local BASE = 1000
-  M.edges = {} -- monitor name -> { id = workspace id, rule = HL.WorkspaceRule }
+  M.edges = {} -- monitor name -> { id = workspace id }, as this load declared them
+
+  -- Where each monitor's empty page belongs, by monitor name, and the
+  -- monitors that have no room for one. A monitor with no windows needs none.
+  -- A page already there counts: the empty page you're on, left of the first
+  -- page with windows; the one in keep (name -> { id }) while it's still left
+  -- of the first page and empty; or another empty page on the same monitor.
+  function M.plan_edges(keep)
+    local used, lowest = {}, {}
+    for _, ws in ipairs(hl.get_workspaces()) do
+      if ws.id > 0 then used[ws.id] = ws end
+      local m = ws.monitor and ws.monitor.name
+      if m and not ws.special and ws.id > 0 and ws.windows > 0 and (not lowest[m] or ws.id < lowest[m]) then
+        lowest[m] = ws.id
+      end
+    end
+    local function empty_here(id, name)
+      local ws = used[id]
+      return ws and not ws.special and ws.windows == 0 and (ws.monitor and ws.monitor.name) == name
+    end
+    local plan, cramped = {}, {}
+    for _, mon in ipairs(hl.get_monitors()) do
+      local name, first = mon.name, lowest[mon.name]
+      local a = mon.active_workspace
+      local kept = keep and keep[name] and keep[name].id
+      if not first then
+        -- Nothing to be left of.
+      elseif a and not a.special and a.id > 0 and a.windows == 0 and a.id < first then
+        plan[name] = a.id
+      elseif kept and kept >= 1 and kept < first and (not used[kept] or empty_here(kept, name)) then
+        plan[name] = kept
+      else
+        local id = first - 1
+        while id >= 1 and used[id] and not empty_here(id, name) do id = id - 1 end
+        if id >= 1 then plan[name] = id else cramped[name] = true end
+      end
+    end
+    return plan, cramped
+  end
 
   if P.leftEdge then
     local edges = M.edges
-    local syncing, queued = false, false
-    local queue
-
-    local function drop_edge(name)
-      local e = edges[name]
-      if e and e.rule then pcall(function() e.rule:set_enabled(false) end) end
-      edges[name] = nil
+    local plan = M.plan_edges()
+    for name, id in pairs(plan) do
+      hl.workspace_rule({ workspace = tostring(id), persistent = true, monitor = name })
+      edges[name] = { id = id }
     end
 
     -- Every page on the monitor moves by the same amount, so their order
@@ -119,65 +159,75 @@ return function(lib, S)
       if back then hl.dispatch(hl.dsp.focus({ monitor = back })) end
     end
 
-    local function sync()
-      if syncing then return end
-      syncing = true
-      local used, by_monitor = {}, {}
-      for _, ws in ipairs(hl.get_workspaces()) do
-        if not ws.special and ws.id > 0 then
-          used[ws.id] = ws
-          local m = ws.monitor and ws.monitor.name
-          if m then
-            by_monitor[m] = by_monitor[m] or {}
-            table.insert(by_monitor[m], ws)
-          end
+    -- A reload plans the empty pages again. Never a loop: at most one a
+    -- second and four a minute, counted in a file, since a reload starts
+    -- Hyprland's Lua afresh; none when the count can't be written; and none
+    -- for a plan this load already declared, since another reload would
+    -- only declare it again.
+    local log = lib.state .. "/pages-reloads"
+    local reloading, waiting = false, false
+    local queue
+    local function replan()
+      if reloading then return end
+      local now, recent = os.time(), {}
+      local f = io.open(log, "r")
+      if f then
+        for line in f:lines() do
+          local t = math.tointeger(tonumber(line))
+          if t and now - t < 60 and t <= now then recent[#recent + 1] = t end
         end
+        f:close()
       end
-
-      local need_rebase = nil
-      for _, mon in ipairs(hl.get_monitors()) do
-        local name = mon.name
-        local active_id = mon.active_workspace and not mon.active_workspace.special and mon.active_workspace.id or nil
-        local edge = edges[name]
-        -- The first page: lowest workspace with windows, or the one you're on.
-        local first
-        for _, ws in ipairs(by_monitor[name] or {}) do
-          if (ws.windows > 0 or ws.id == active_id) and (not first or ws.id < first.id) then first = ws end
+      if #recent >= 4 then return end
+      if recent[#recent] == now then
+        -- Again in a second, when whatever is changing has settled.
+        if not waiting then
+          waiting = true
+          hl.timer(function() waiting = false; queue() end, { timeout = 1100, type = "oneshot" })
         end
-
-        -- Where the empty page belongs: the closest free id left of the first page.
-        local id = first and first.id - 1 or 0
-        while id >= 1 and used[id] and not (edge and edge.id == id and used[id].windows == 0) do id = id - 1 end
-
-        if not first or first.windows == 0 then
-          -- You're on an empty first page already; it is the left edge.
-          if edge and (not first or edge.id ~= first.id) then drop_edge(name) end
-        elseif edge and edge.id == id and used[id] and used[id].windows == 0 then
-          -- The empty page is still right where it belongs.
-        else
-          drop_edge(name)
-          if id >= 1 then
-            local rule = hl.workspace_rule({ workspace = tostring(id), persistent = true, monitor = name })
-            edges[name] = { id = id, rule = rule }
-          else
-            need_rebase = need_rebase or {}
-            need_rebase[name] = true
-          end
-        end
+        return
       end
-      syncing = false
-      if need_rebase then
-        rebase(need_rebase)
-        queue()
+      recent[#recent + 1] = now
+      f = io.open(log, "w")
+      if not f then return end
+      local ok = f:write(table.concat(recent, "\n"), "\n")
+      f:close()
+      if not ok then return end
+      reloading = true
+      hl.exec_cmd("hyprctl reload")
+    end
+
+    -- Reads and dispatches only: the rebase moves windows, and replan asks
+    -- for a reload. A monitor's pages move once a load at most; the moves'
+    -- own events bring the next check.
+    local rebased = {}
+    local function check()
+      local want, cramped = M.plan_edges(edges)
+      if next(cramped) then
+        local now = {}
+        for name in pairs(cramped) do
+          if not rebased[name] then rebased[name], now[name] = true, true end
+        end
+        if next(now) then rebase(now) end
+        return
+      end
+      local monitors = {}
+      for _, mon in ipairs(hl.get_monitors()) do monitors[mon.name] = true end
+      for name, id in pairs(want) do
+        if not edges[name] or edges[name].id ~= id then return replan() end
+      end
+      for name in pairs(edges) do
+        if not monitors[name] then return replan() end
       end
     end
 
+    local queued = false
     queue = function()
       if queued then return end
       queued = true
       hl.timer(function()
         queued = false
-        sync()
+        check()
       end, { timeout = 60, type = "oneshot" })
     end
 

@@ -30,15 +30,25 @@ return function(lib, S)
     workspace_swipe_min_speed_to_force = 1000000,
     workspace_swipe_cancel_ratio = 1,
   }
-  local swipe_locked = nil
+  -- The same, as text for lib.eval: after the load, a change of config
+  -- doesn't come from an event or a timer (docs/safety.md, rule 2).
+  local function chunk(g)
+    return string.format("hl.config({ gestures = { workspace_swipe_distance = %d, "
+      .. "workspace_swipe_min_speed_to_force = %d, workspace_swipe_cancel_ratio = %.3f } })",
+      g.workspace_swipe_distance, g.workspace_swipe_min_speed_to_force, g.workspace_swipe_cancel_ratio)
+  end
+  local swipe_locked = false
   local function sync()
     local lock = lib.open_special() ~= nil
     if lock ~= swipe_locked then
       swipe_locked = lock
-      hl.config({ gestures = lock and locked_swipe or swipe })
+      lib.eval(chunk(lock and locked_swipe or swipe))
     end
   end
-  sync()
+  if lib.open_special() ~= nil then
+    swipe_locked = true
+    hl.config({ gestures = locked_swipe })
+  end
   table.insert(lib.on_special_change, sync)
   for _, event in ipairs({ "workspace.special_active", "workspace.active", "monitor.focused" }) do
     hl.on(event, function() sync() end)

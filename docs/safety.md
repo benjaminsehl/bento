@@ -59,8 +59,15 @@ guards the way in:
 - The checks run on Hyprland's real behaviour. A harness with a stand-in `hl`
   is useful, but it can't tell you something won't crash.
 
-## Known exceptions, still to fix
+## Changing config after the load
 
-- `hypr/pages.lua` keeps each left-edge workspace rule (`M.edges[...].rule`)
-  and calls `:set_enabled(false)` on it from its event handlers. It has
-  held up for a week, but it breaks rules 1 and 2 and has to change.
+Rule 2 leaves two ways to change config once Hyprland has loaded Bento:
+
+- **Ask for a reload.** A rule that only belongs at load time (the empty page
+  left of the first one, `hypr/pages.lua`) is declared while the config loads,
+  and when it belongs somewhere else, Bento runs `hyprctl reload` through
+  `hl.exec_cmd`, rate-limited in a state file so it can never loop.
+- **Send it through `hyprctl eval`**, started by `hl.exec_cmd`, so Hyprland
+  runs it later, outside the handler. `lib.eval` builds the chunk from
+  constants and numbers only and guards it with this load's id, so one that
+  lands after a reload does nothing. Setups does the same with its own guard.
