@@ -32,7 +32,8 @@
     "minimize": true,
     "overview": true,
     "dragResize": true,
-    "minTileSize": 320
+    "minTileSize": 320,
+    "overviewOnF9": false
   },
   "terminal": {
     "ghostty": true

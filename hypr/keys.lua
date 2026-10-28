@@ -237,6 +237,14 @@ return function(lib, S)
     end
   end)
 
+  -- ------------------------------------------------- F9 on PC keyboards
+  -- Overview, in place of Omarchy's push-to-talk, with windows.overviewOnF9
+  -- (Caps Lock can dictate instead). Here, after the Mac keys unbind F9 and
+  -- before the Magic Keyboard binds it, so neither takes the other's.
+  if S.windows.overview and S.windows.overviewOnF9 then
+    rebind("F9", "Overview", lib.toggle_overview, { device = lib.pc })
+  end
+
   -- ----------------------------------------------- PC keyboards in Ghostty
   -- Not translated for now. The first version kept Hyprland's bind objects
   -- and switched them on and off whenever a window took focus. Once

@@ -30,9 +30,7 @@ return function(lib, S)
     if pages then pages.slide_on_if_empty(id, monitor) end
   end
 
-  local function toggle_overview()
-    if lib.view() == "overview" then lib.hide_overlay() else lib.show("overview") end
-  end
+  local toggle_overview = lib.toggle_overview
 
   local function toggle_drawer()
     if lib.view() == "drawer" then lib.hide_overlay()

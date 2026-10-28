@@ -292,4 +292,8 @@ function lib.hide_overlay()
   hl.exec_cmd("omarchy-shell shell hide " .. lib.plugin)
 end
 
+function lib.toggle_overview()
+  if lib.view() == "overview" then lib.hide_overlay() else lib.show("overview") end
+end
+
 return lib
