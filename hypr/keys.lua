@@ -237,12 +237,22 @@ return function(lib, S)
     end
   end)
 
-  -- ------------------------------------------------- F9 on PC keyboards
+  -- ------------------------------------------- F9 on PC-shaped keyboards
   -- Overview, in place of Omarchy's push-to-talk, with windows.overviewOnF9
-  -- (Caps Lock can dictate instead). Here, after the Mac keys unbind F9 and
-  -- before the Magic Keyboard binds it, so neither takes the other's.
+  -- (Caps Lock can dictate instead): on PC keyboards, and on PC-shaped ones
+  -- on Mac keys, like a laptop on mac-on-pc. Here, after the Mac keys unbind
+  -- F9 and before the Magic Keyboard binds it, so neither takes the other's.
   if S.windows.overview and S.windows.overviewOnF9 then
     rebind("F9", "Overview", lib.toggle_overview, { device = lib.pc })
+    local shaped = {}
+    for _, k in ipairs(lib.mac and lib.keyboards and lib.keyboards.list or {}) do
+      if k.bento and (k.own == "mac-on-pc" or k.own == "pc") then
+        for _, name in ipairs(k.devices) do shaped[#shaped + 1] = name end
+      end
+    end
+    if #shaped > 0 then
+      o.bind("F9", "Overview", lib.toggle_overview, { device = { inclusive = true, list = shaped } })
+    end
   end
 
   -- ----------------------------------------------- PC keyboards in Ghostty
