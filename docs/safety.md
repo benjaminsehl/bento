@@ -22,7 +22,13 @@ guards the way in:
   `~/.local/state/bento/starting`. If a Hyprland finds another one's mark,
   that one stopped while Bento was new to it, so it starts without Bento,
   says so in a notification, and stays that way until `bento resume`. A
-  crash costs one login, not every login. A Hyprland that quits cleanly
+  crash costs one login, not every login. Bento's code only runs through
+  Lua, so a crash in it has liblua in the backtrace of Hyprland's crash
+  report (`~/.cache/hyprland`). A crash whose report has no Lua in it was
+  Hyprland's own, like the touchscreen crash during an unplug on
+  2026-10-30, so Bento stays on, once (`strike`). If the next Hyprland
+  stops early too, or there's no report, Bento pauses as before: a crash
+  can also come from something Bento set. A Hyprland that quits cleanly
   clears its mark, and only the real Hyprland sets one: Omarchy's
   keybindings menu runs the stub too, with a stand-in `hl`, and leaves the
   breaker and the errors file alone.

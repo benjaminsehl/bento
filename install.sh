@@ -85,7 +85,7 @@ done
 # once that is gone, starts the cleanup instead. It names no checkout, so an
 # update leaves it alone.
 stub=$(cat <<'EOF'
--- Written by Bento (io.github.benjaminsehl.bento), stub 4. Bento deletes this
+-- Written by Bento (io.github.benjaminsehl.bento), stub 5. Bento deletes this
 -- file when it is disabled or removed in Omarchy; deleting it by hand is safe.
 local home = os.getenv("HOME") or ""
 local plugin = home .. "/.config/omarchy/plugins/io.github.benjaminsehl.bento"
@@ -118,13 +118,38 @@ if f then
   -- `starting`. If the next Hyprland finds another one's mark, that one
   -- stopped while Bento was new to it, so Bento stays off (`paused`) until
   -- `bento resume`, and Hyprland comes up as stock Omarchy.
+  --
+  -- Bento's code only ever runs through Lua, so a crash in it has liblua in
+  -- the backtrace of Hyprland's crash report. A crash whose report has no Lua
+  -- in it was Hyprland's own (say, a touchscreen event during an unplug):
+  -- Bento stays on, once. If the next Hyprland stops early too, Bento pauses
+  -- after all, since a crash can also come from something Bento set.
   local me = os.getenv("HYPRLAND_INSTANCE_SIGNATURE") or "?"
-  local starting, paused = state .. "/starting", state .. "/paused"
+  local starting, paused, strike = state .. "/starting", state .. "/paused", state .. "/strike"
+  local q = function(s) return "'" .. s:gsub("'", "'\\''") .. "'" end
+  -- The backtrace of the crash report Hyprland wrote after `starting`, if any.
+  local function crash_backtrace()
+    local dir = (os.getenv("XDG_CACHE_HOME") or (home .. "/.cache")) .. "/hyprland"
+    local ls = io.popen("find " .. q(dir) .. " -maxdepth 1 -name 'hyprlandCrashReport*.txt' -newer "
+      .. q(starting) .. " -print 2>/dev/null")
+    if not ls then return nil end
+    local path = ls:read("l")
+    ls:close()
+    local text = path and read(path)
+    return text and text:match("\nBacktrace:(.-)\nLog tail:") or nil
+  end
   local ok, skip = pcall(function()
     if not real then return false end
     if read(paused) then return true end
     local other = read(starting)
     if other and other ~= me then
+      local trace = not read(strike) and crash_backtrace()
+      if trace and not trace:lower():find("lua", 1, true) then
+        write(strike, other)
+        notify("Hyprland crashed, not in Bento", "Hyprland stopped soon after loading Bento, but not in "
+          .. "Bento's code, so Bento stays on. Crash reports are in ~/.cache/hyprland.")
+        return false
+      end
       write(paused, "Hyprland " .. other .. " stopped within two minutes of loading Bento.\n")
       return true
     end
@@ -140,11 +165,11 @@ if f then
     if real then
       pcall(os.execute, "mkdir -p '" .. state:gsub("'", "'\\''") .. "'")
       write(starting, me)
-      pcall(hl.timer, function() os.remove(starting) end, { timeout = 120000, type = "oneshot" })
+      pcall(hl.timer, function() os.remove(starting); os.remove(strike) end, { timeout = 120000, type = "oneshot" })
       -- A Hyprland that quits cleanly didn't crash, however soon after a reload.
-      pcall(hl.on, "hyprland.shutdown", function() os.remove(starting) end)
+      pcall(hl.on, "hyprland.shutdown", function() os.remove(starting); os.remove(strike) end)
     end
-    _G.bento_repo, _G.bento_stub, _G.bento_real = plugin, 4, real
+    _G.bento_repo, _G.bento_stub, _G.bento_real = plugin, 5, real
     -- An error stops at Bento: the rest of your config still loads.
     local loaded, err = pcall(dofile, plugin .. "/hypr/bento.lua")
     if not loaded and real then
