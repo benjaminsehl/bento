@@ -6,9 +6,6 @@
 #   bento setup ...
 # or load Bento again after its breaker paused it (see install.sh's stub):
 #   bento resume
-# or print what each page is called, by workspace name, as JSON (Omarcast's
-# workspaceLabelsCommand): {"2006": "Desktop 2"}
-#   bento pages labels
 view=${1:-preferences}
 case $view in
   setup) shift; exec "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/bento-setup" "$@" ;;
@@ -16,21 +13,8 @@ case $view in
     state=${XDG_STATE_HOME:-$HOME/.local/state}/bento
     rm -f "$state/paused" "$state/paused-told" "$state/starting" "$state/strike"
     exec hyprctl reload ;;
-  pages)
-    [[ ${2:-} == labels ]] || { echo "usage: bento pages labels" >&2; exit 2; }
-    # Page N is the Nth dot on its monitor's bar (pages/BarWidget.qml): the
-    # workspaces with windows, plus the one the monitor shows, by id. With more
-    # than one monitor, each label says which.
-    { hyprctl -j monitors && hyprctl -j workspaces; } 2>/dev/null | jq -cs '
-      (.[0] | map({key: .name, value: {active: .activeWorkspace.id, model: (.model // .name)}}) | from_entries) as $mons
-      | (.[1] | map(select(.id > 0 and $mons[.monitor] != null and (.windows > 0 or .id == $mons[.monitor].active)))) as $pages
-      | ($pages | map(.monitor) | unique | length) as $count
-      | [$pages | group_by(.monitor)[] | sort_by(.id) | to_entries[]
-          | {key: .value.name, value: ("Desktop \(.key + 1)" + (if $count > 1 then " on \($mons[.value.monitor].model)" else "" end))}]
-      | from_entries'
-    exit ;;
   preferences|overview|drawer) ;;
-  *) echo "usage: bento [preferences [pane]|overview|drawer|setup ...|resume|pages labels]" >&2; exit 2 ;;
+  *) echo "usage: bento [preferences [pane]|overview|drawer|setup ...|resume]" >&2; exit 2 ;;
 esac
 payload=$(jq -cn --arg view "$view" --arg pane "${2:-}" '{view: $view} + (if $pane == "" then {} else {pane: $pane} end)')
 exec omarchy-shell shell summon io.github.benjaminsehl.bento "$payload"
